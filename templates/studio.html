@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Studio — Image Studio</title>
+<style>
+:root {
+  --bg:      oklch(14% 0.008 250);
+  --surface: oklch(18% 0.006 250);
+  --fg:      oklch(90% 0.005 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(24% 0.008 250);
+  --accent:  oklch(62% 0.18 255);
+
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --ease: 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+[data-theme="light"] {
+  --bg:      oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(18% 0.012 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(92% 0.005 250);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  height: 100vh;
+  overflow: hidden;
+  transition: background var(--ease), color var(--ease);
+}
+
+/* ── App Shell ────────────────────────────────────────── */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ── Top Bar ──────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  gap: 16px;
+}
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 590;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.wordmark a { text-decoration: none; color: var(--fg); }
+.api-badge {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 100px;
+  letter-spacing: 0.02em;
+  font-weight: 510;
+  white-space: nowrap;
+}
+.api-badge.ok { color: oklch(62% 0.14 150); background: oklch(62% 0.14 150 / 0.1); }
+.api-badge.no { color: oklch(55% 0.17 25); background: oklch(55% 0.17 25 / 0.1); }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Nav buttons ──────────────────────────────────────── */
+.nav-btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 510;
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: border-color var(--ease), color var(--ease);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.nav-btn:hover { border-color: var(--accent); color: var(--fg); }
+
+/* ── Theme Toggle ─────────────────────────────────────── */
+.theme-toggle {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  transition: border-color var(--ease), color var(--ease);
+  flex-shrink: 0;
+}
+.theme-toggle:hover { border-color: var(--accent); color: var(--fg); }
+
+/* ── Workspace ────────────────────────────────────────── */
+.workspace {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── Left Panel ───────────────────────────────────────── */
+.panel-left {
+  width: 420px;
+  min-width: 420px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 24px;
+  gap: 20px;
+  background: var(--bg);
+}
+
+/* ── Upload Zone ──────────────────────────────────────── */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--ease), background var(--ease);
+  position: relative;
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--accent);
+  background: oklch(from var(--accent) l c h / 0.04);
+}
+.upload-zone.has-image { padding: 10px; }
+.upload-zone .placeholder-text {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.upload-zone .placeholder-text strong {
+  color: var(--fg);
+  display: block;
+  margin-bottom: 2px;
+  font-weight: 510;
+}
+.upload-zone img {
+  max-height: 180px;
+  border-radius: var(--radius);
+  object-fit: contain;
+}
+.upload-zone .clear-img {
+  position: absolute;
+  top: 10px; right: 10px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--ease), border-color var(--ease);
+}
+.upload-zone .clear-img:hover { color: var(--fg); border-color: var(--fg); }
+
+/* ── Prompt Area ──────────────────────────────────────── */
+.prompt-area { display: flex; flex-direction: column; gap: 6px; }
+.prompt-area label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 510;
+}
+.prompt-area textarea {
+  width: 100%;
+  min-height: 100px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font: 15px/1.6 var(--font-body);
+  padding: 14px 16px;
+  resize: vertical;
+  transition: border-color var(--ease);
+}
+.prompt-area textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.prompt-area textarea::placeholder { color: var(--muted); opacity: 0.5; }
+
+/* ── Controls ─────────────────────────────────────────── */
+.controls { display: flex; flex-direction: column; gap: 14px; }
+.controls-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.control-group label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 510;
+}
+.control-group select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font: 14px var(--font-body);
+  padding: 8px 32px 8px 12px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: border-color var(--ease);
+}
+.control-group select:focus { outline: none; border-color: var(--accent); }
+
+/* ── Buttons ──────────────────────────────────────────── */
+.btn-row {
+  display: flex;
+  gap: 8px;
+}
+.btn {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 590;
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  border: none;
+  letter-spacing: 0.01em;
+  transition: opacity var(--ease), background var(--ease), border-color var(--ease);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.btn:hover { opacity: 0.9; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.btn-primary {
+  color: #fff;
+  background: var(--accent);
+  flex: 1;
+}
+.btn-secondary {
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  flex: 1;
+}
+.btn-secondary:hover { border-color: var(--accent); }
+
+/* ── Right Panel / Gallery ────────────────────────────── */
+.panel-right {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--bg);
+}
+.gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.gallery-header h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 510;
+}
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.gallery-card {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: border-color var(--ease);
+  aspect-ratio: 1;
+}
+.gallery-card:hover { border-color: oklch(from var(--accent) l c h / 0.5); }
+.gallery-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gallery-card .card-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, oklch(0% 0 0 / 0.6) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity var(--ease);
+  display: flex;
+  align-items: flex-end;
+  padding: 12px;
+  gap: 6px;
+}
+.gallery-card:hover .card-overlay { opacity: 1; }
+.gallery-card .card-overlay .btn-ghost {
+  background: oklch(100% 0 0 / 0.15);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid oklch(100% 0 0 / 0.2);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 510;
+  cursor: pointer;
+  transition: background var(--ease);
+}
+.gallery-card .card-overlay .btn-ghost:hover { background: oklch(100% 0 0 / 0.25); }
+
+.gallery-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  grid-column: 1 / -1;
+}
+.gallery-empty-icon {
+  font-size: 40px;
+  margin-bottom: 16px;
+  opacity: 0.4;
+}
+
+/* ── Toast ────────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  box-shadow: 0 2px 8px oklch(0% 0 0 / 0.08);
+  animation: slideIn 0.25s ease;
+  max-width: 360px;
+}
+[data-theme="dark"] .toast { box-shadow: 0 4px 24px oklch(0% 0 0 / 0.5); }
+.toast.error { border-color: oklch(55% 0.17 25 / 0.4); }
+.toast.success { border-color: oklch(62% 0.14 150 / 0.4); }
+@keyframes slideIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Spinner ──────────────────────────────────────────── */
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--fg);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Responsive ───────────────────────────────────────── */
+@media (max-width: 860px) {
+  .workspace { flex-direction: column; }
+  .panel-left {
+    width: 100%; min-width: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 55vh;
+    padding: 16px;
+    gap: 14px;
+  }
+  .panel-right { padding: 16px; }
+  .controls-row { flex-wrap: wrap; }
+  .control-group { flex: 1 1 100px; }
+  .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="wordmark"><a href="/">Image Studio</a></div>
+      {% if api_key_set %}<span class="api-badge ok" id="api-badge">API Key Ready</span>{% else %}<span class="api-badge no" id="api-badge">API Key not set</span>{% endif %}
+    </div>
+    <div class="topbar-actions">
+      <input type="password" id="api-key-input" placeholder="OpenAI API Key" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--fg);padding:5px 10px;font-size:12px;width:200px;display:none" />
+      <button class="nav-btn" id="api-key-btn" title="Set API Key">Key</button>
+      <a href="/gallery" class="nav-btn">Gallery</a>
+      <a href="/history-view" class="nav-btn">History</a>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle theme">
+        <span id="theme-icon">☀</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <section class="panel-left">
+      <div class="upload-zone" id="upload-zone">
+        <div class="placeholder-text">
+          <strong>Drop a reference photo</strong>
+          JPEG, PNG, or WebP — max 10 MB
+        </div>
+      </div>
+      <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" style="display:none" />
+
+      <div class="prompt-area">
+        <label for="prompt-input">Prompt</label>
+        <textarea id="prompt-input" placeholder="Describe the image you want to create..."></textarea>
+      </div>
+
+      <div class="controls">
+        <div class="controls-row">
+          <div class="control-group">
+            <label for="quality-select">Quality</label>
+            <select id="quality-select">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="size-select">Size</label>
+            <select id="size-select">
+              <option value="1024x1024" selected>1024×1024 (1:1)</option>
+              <option value="1792x1024">1792×1024 (16:9)</option>
+              <option value="1024x1792">1024×1792 (9:16)</option>
+              <option value="1536x1024">1536×1024 (3:2)</option>
+              <option value="1024x1536">1024×1536 (2:3)</option>
+              <option value="2048x2048" data-high="true">2048×2048 (1:1 HQ)</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="count-select">Count</label>
+            <select id="count-select">
+              <option value="1" selected>1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="enhance-btn" disabled>Translate &amp; Enhance</button>
+          <button class="btn btn-primary" id="generate-btn" disabled>Generate</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel-right">
+      <div class="gallery-header">
+        <h2 id="gallery-heading">Session Results</h2>
+        <span style="font-size:11px;color:var(--muted)" id="gallery-sub">Cmd+Enter to generate</span>
+      </div>
+      <div class="gallery-grid" id="gallery-grid">
+        <div class="gallery-empty">
+          <div class="gallery-empty-icon">—</div>
+          Generated images will appear here.
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+window._setKeySecret = {{ set_key_secret | tojson }};
+const state = {
+  imageB64: '',
+  imageFile: null,
+  gallery: [],
+  generating: false,
+  enhancing: false,
+  theme: 'dark'
+};
+
+const $ = (sel) => document.querySelector(sel);
+
+const uploadZone = $('#upload-zone');
+const fileInput = $('#file-input');
+const promptInput = $('#prompt-input');
+const enhanceBtn = $('#enhance-btn');
+const generateBtn = $('#generate-btn');
+const qualitySelect = $('#quality-select');
+const sizeSelect = $('#size-select');
+const countSelect = $('#count-select');
+const galleryGrid = $('#gallery-grid');
+const galleryHeading = $('#gallery-heading');
+const gallerySub = $('#gallery-sub');
+const apiBadge = $('#api-badge');
+const toastContainer = $('#toast-container');
+const themeToggle = $('#theme-toggle');
+const themeIcon = $('#theme-icon');
+
+async function init() {
+  loadTheme();
+  await checkHealth();
+  updateButtons();
+  checkRestore();
+}
+
+function loadTheme() {
+  const saved = localStorage.getItem('image-studio-theme');
+  if (saved === 'light' || saved === 'dark') state.theme = saved;
+  applyTheme();
+}
+
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', state.theme);
+  themeIcon.textContent = state.theme === 'dark' ? '☀' : '☾';
+  localStorage.setItem('image-studio-theme', state.theme);
+}
+
+themeToggle.addEventListener('click', () => {
+  state.theme = state.theme === 'dark' ? 'light' : 'dark';
+  applyTheme();
+});
+
+let apiKey = {{ 'true' if api_key_set else 'false' }};
+let apiKeyInput = $('#api-key-input');
+const apiKeyBtn = $('#api-key-btn');
+
+apiKeyBtn.addEventListener('click', () => {
+  if (apiKeyInput.style.display === 'none') {
+    apiKeyInput.style.display = '';
+    apiKeyInput.focus();
+  } else {
+    submitKey();
+  }
+});
+apiKeyInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); submitKey(); }
+});
+
+async function submitKey() {
+  const key = apiKeyInput.value.trim();
+  if (!key) return;
+  try {
+    const r = await fetch('/set-key', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Set-Key-Secret': window._setKeySecret || ''
+      },
+      body: JSON.stringify({ api_key: key })
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      apiBadge.textContent = 'API Key Ready';
+      apiBadge.className = 'api-badge ok';
+      apiKey = true;
+      apiKeyInput.style.display = 'none';
+      apiKeyInput.value = '';
+      toast('API key set', 'success');
+    } else {
+      toast(d.message || 'Invalid key', 'error');
+    }
+  } catch (e) { toast('Failed to set key', 'error'); }
+}
+
+function toast(msg, type) {
+  type = type || '';
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  toastContainer.appendChild(el);
+  setTimeout(() => { el.remove(); }, 4000);
+}
+
+function updateButtons() {
+  const hasPrompt = promptInput.value.trim().length > 0;
+  const hasImage = state.imageB64.length > 0;
+  const canAct = (hasPrompt || hasImage) && !state.generating && !state.enhancing;
+  enhanceBtn.disabled = !canAct;
+  generateBtn.disabled = !hasPrompt || state.generating || state.enhancing;
+}
+
+function setLoading(btn, spinner) {
+  if (spinner) {
+    btn.disabled = true;
+    btn.dataset.origText = btn.textContent;
+    btn.innerHTML = '<span class="spinner"></span> ' + btn.dataset.origText;
+  } else {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.origText || btn.textContent;
+    updateButtons();
+  }
+}
+
+async function checkHealth() {
+  try {
+    const r = await fetch('/health');
+    const d = await r.json();
+    if (d.api_key_set) {
+      apiBadge.textContent = 'API Key Ready';
+      apiBadge.className = 'api-badge ok';
+    }
+  } catch (_) {}
+}
+
+function checkRestore() {
+  try {
+    const saved = localStorage.getItem('image-studio-restore');
+    if (saved) {
+      const data = JSON.parse(saved);
+      if (data.prompt) promptInput.value = data.prompt;
+      localStorage.removeItem('image-studio-restore');
+      updateButtons();
+      toast('Prompt restored from history', 'success');
+    }
+  } catch (_) {}
+}
+
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => { uploadZone.classList.remove('drag-over'); });
+uploadZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (file) handleFile(file);
+});
+
+function handleFile(file) {
+  if (!file.type.match(/image\/(jpeg|png|webp)/)) { toast('Unsupported file type. Use JPEG, PNG, or WebP.', 'error'); return; }
+  if (file.size > 10 * 1024 * 1024) { toast('File too large. Max 10 MB.', 'error'); return; }
+  state.imageFile = file;
+  const reader = new FileReader();
+  reader.onload = () => { state.imageB64 = reader.result.split(',')[1]; renderUploadPreview(); updateButtons(); };
+  reader.readAsDataURL(file);
+}
+
+function clearImage() {
+  state.imageB64 = ''; state.imageFile = null; fileInput.value = '';
+  renderUploadPreview(); updateButtons();
+}
+
+function renderUploadPreview() {
+  if (state.imageB64) {
+    uploadZone.classList.add('has-image');
+    uploadZone.innerHTML = `<img src="data:image/jpeg;base64,${state.imageB64}" alt="Reference photo" /><button class="clear-img" title="Remove image">×</button>`;
+    uploadZone.querySelector('.clear-img').addEventListener('click', (e) => { e.stopPropagation(); clearImage(); });
+  } else {
+    uploadZone.classList.remove('has-image');
+    uploadZone.innerHTML = '<div class="placeholder-text"><strong>Drop a reference photo</strong>JPEG, PNG, or WebP — max 10 MB</div>';
+  }
+}
+
+const allSizeOptions = Array.from(sizeSelect.options);
+qualitySelect.addEventListener('change', () => {
+  const isHigh = qualitySelect.value === 'high';
+  const currentSize = sizeSelect.value;
+  sizeSelect.innerHTML = '';
+  allSizeOptions.forEach(opt => {
+    if (opt.getAttribute('data-high') !== 'true' || isHigh) sizeSelect.appendChild(opt.cloneNode(true));
+  });
+  if (Array.from(sizeSelect.options).some(o => o.value === currentSize)) sizeSelect.value = currentSize;
+});
+
+promptInput.addEventListener('input', updateButtons);
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!generateBtn.disabled) doGenerate(); }
+});
+
+enhanceBtn.addEventListener('click', doEnhance);
+async function doEnhance() {
+  state.enhancing = true; setLoading(enhanceBtn, true); updateButtons();
+  try {
+    const body = { prompt: promptInput.value.trim() };
+    if (state.imageB64) body.image_b64 = state.imageB64;
+    const r = await fetch('/enhance-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Enhance failed');
+    promptInput.value = d.enhanced;
+    toast('Prompt enhanced by GPT-4o', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { state.enhancing = false; setLoading(enhanceBtn, false); }
+}
+
+generateBtn.addEventListener('click', doGenerate);
+async function doGenerate() {
+  const prompt = promptInput.value.trim();
+  if (!prompt) return;
+  state.generating = true; setLoading(generateBtn, true); updateButtons();
+  try {
+    const body = { prompt, quality: qualitySelect.value, size: sizeSelect.value, n: parseInt(countSelect.value) };
+    if (state.imageB64) body.image_b64 = state.imageB64;
+    const r = await fetch('/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Generation failed');
+    state.gallery = [...d.results, ...state.gallery];
+    renderGallery();
+    toast(`Generated ${d.results.length} image(s)`, 'success');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { state.generating = false; setLoading(generateBtn, false); }
+}
+
+function renderGallery() {
+  if (state.gallery.length === 0) {
+    galleryGrid.innerHTML = '<div class="gallery-empty"><div class="gallery-empty-icon">—</div>Generated images will appear here.</div>';
+    galleryHeading.textContent = 'Session Results';
+    gallerySub.style.display = '';
+    return;
+  }
+  galleryHeading.textContent = 'Session Results';
+  gallerySub.style.display = 'none';
+  galleryGrid.innerHTML = state.gallery.map((img, i) => `
+    <div class="gallery-card">
+      <img src="${escAttr(img.url)}" alt="Generated image" loading="lazy" />
+      <div class="card-overlay">
+        <button class="btn-ghost download-btn" data-url="${escAttr(img.url)}" data-idx="${i}">Download</button>
+        ${img.revised_prompt ? `<button class="btn-ghost copy-btn" data-prompt="${escAttr(img.revised_prompt)}">Copy Prompt</button>` : ''}
+      </div>
+    </div>`).join('');
+
+  galleryGrid.querySelectorAll('.download-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const url = btn.dataset.url;
+      if (url.startsWith('data:')) { const a = document.createElement('a'); a.href = url; a.download = 'image.png'; a.click(); }
+      else {
+        try {
+          const r = await fetch(url); const blob = await r.blob();
+          const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'image.png'; a.click();
+          URL.revokeObjectURL(a.href);
+        } catch (_) { window.open(url, '_blank'); }
+      }
+    });
+  });
+  galleryGrid.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(btn.dataset.prompt).then(() => toast('Prompt copied', 'success')).catch(() => toast('Failed to copy', 'error'));
+    });
+  });
+}
+
+function escHtml(s) { const el = document.createElement('span'); el.textContent = s; return el.innerHTML; }
+function escAttr(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+init();
+</script>
+</body>
+</html>

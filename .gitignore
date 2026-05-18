@@ -1,0 +1,12 @@
+.DS_Store
+venv/
+__pycache__/
+*.pyc
+.hermes/
+.claude/
+dogfood-output/
+image-studio-redesign.html
+image-studio-redesign.md
+Design/
+prompts.db
+808ai_prompts_data.json

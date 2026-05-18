@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>History — Image Studio</title>
+<style>
+:root {
+  --bg:      oklch(98% 0.004 95);
+  --surface: oklch(100% 0.002 95);
+  --fg:      oklch(20% 0.018 70);
+  --muted:   oklch(48% 0.012 70);
+  --border:  oklch(90% 0.006 95);
+  --accent:  oklch(52% 0.10 28);
+
+  --font-display: 'Iowan Old Style', 'Charter', Georgia, serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono:    ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --ease: 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── Top Bar ────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  gap: 16px;
+}
+.topbar-left { display: flex; align-items: center; gap: 14px; }
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.wordmark a { text-decoration: none; color: var(--fg); }
+.nav-breadcrumb {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.topbar-right { display: flex; align-items: center; gap: 8px; }
+.nav-btn {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 510;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color var(--ease), color var(--ease);
+}
+.nav-btn:hover { border-color: var(--accent); color: var(--fg); }
+.nav-btn.active { border-color: var(--fg); color: var(--fg); }
+
+/* ── Toolbar ────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.toolbar-left { display: flex; align-items: center; gap: 12px; }
+.toolbar-left h2 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.toolbar-count {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg);
+  font-feature-settings: "tnum";
+}
+.search-wrap {
+  position: relative;
+  flex: 1;
+  max-width: 360px;
+}
+.search-wrap input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font: 14px var(--font-body);
+  padding: 8px 36px 8px 14px;
+  transition: border-color var(--ease);
+}
+.search-wrap input:focus { outline: none; border-color: var(--accent); }
+.search-wrap input::placeholder { color: var(--muted); opacity: 0.5; }
+.search-wrap .search-icon {
+  position: absolute;
+  right: 10px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+.toolbar-actions { display: flex; gap: 8px; }
+.btn-sm {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 510;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color var(--ease), color var(--ease);
+}
+.btn-sm:hover { border-color: var(--fg); color: var(--fg); }
+.btn-sm.danger:hover { border-color: oklch(55% 0.17 25); color: oklch(55% 0.17 25); }
+
+/* ── History List ───────────────────────────────────── */
+.history-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+.history-list {
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.history-item {
+  display: flex;
+  gap: 20px;
+  padding: 20px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color var(--ease), background var(--ease);
+  align-items: flex-start;
+}
+.history-item:hover { border-color: var(--accent); background: oklch(from var(--accent) l c h / 0.02); }
+.history-thumb {
+  width: 64px; height: 64px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--bg);
+}
+.history-thumb svg { width: 100%; height: 100%; }
+.history-body { flex: 1; min-width: 0; }
+.history-prompt {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--fg);
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.history-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.history-meta span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 510;
+}
+.status-badge.ok { color: oklch(58% 0.12 160); background: oklch(58% 0.12 160 / 0.08); }
+.status-badge.fail { color: oklch(55% 0.17 25); background: oklch(55% 0.17 25 / 0.08); }
+.ref-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.history-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--ease);
+}
+.history-item:hover .history-actions { opacity: 1; }
+.icon-btn {
+  width: 32px; height: 32px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color var(--ease), color var(--ease);
+}
+.icon-btn:hover { border-color: var(--fg); color: var(--fg); }
+.icon-btn.danger:hover { border-color: oklch(55% 0.17 25); color: oklch(55% 0.17 25); }
+
+.history-empty {
+  text-align: center;
+  padding: 80px 24px;
+  color: var(--muted);
+  font-size: 15px;
+  border: 2px dashed var(--border);
+  max-width: 900px;
+}
+.history-empty a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 510;
+}
+
+/* ── Detail Sidebar ─────────────────────────────────── */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: oklch(0% 0 0 / 0.4);
+  z-index: 90;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ease);
+}
+.sidebar-backdrop.open { opacity: 1; pointer-events: auto; }
+
+.sidebar {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 440px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  z-index: 100;
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.sidebar.open { transform: translateX(0); }
+.sidebar-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.sidebar-header h2 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.sidebar-close {
+  width: 32px; height: 32px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--ease), border-color var(--ease);
+}
+.sidebar-close:hover { color: var(--fg); border-color: var(--fg); }
+.sidebar-body {
+  flex: 1;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.sidebar-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.sidebar-prompt {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fg);
+}
+.sidebar-revised {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+}
+.sidebar-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+.sidebar-meta-item {
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.sidebar-meta-item .label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.sidebar-meta-item .value {
+  font-size: 14px;
+  color: var(--fg);
+  font-feature-settings: "tnum";
+}
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.sidebar-actions .btn {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 590;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: none;
+  text-align: center;
+  transition: opacity var(--ease);
+}
+.sidebar-actions .btn:hover { opacity: 0.88; }
+.btn-accent { background: var(--accent); color: var(--surface); }
+.btn-outline { background: transparent; color: var(--fg); border: 1px solid var(--fg) !important; }
+.btn-danger-text {
+  background: transparent;
+  color: oklch(55% 0.17 25);
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  padding: 8px 16px !important;
+}
+.btn-danger-text:hover { opacity: 0.7 !important; }
+
+/* ── Toast ──────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 20px; right: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 12px 20px;
+  font-size: 14px;
+  animation: slideIn 0.25s ease;
+  max-width: 360px;
+}
+.toast.success { border-left: 3px solid oklch(58% 0.12 160); }
+@keyframes slideIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Responsive ─────────────────────────────────────── */
+@media (max-width: 700px) {
+  .sidebar { width: 100%; }
+  .history-item { padding: 14px 16px; gap: 12px; }
+  .history-actions { opacity: 1; }
+  .history-meta { gap: 8px; }
+  .toolbar { padding: 12px 16px; }
+  .history-scroll { padding: 16px; }
+  .search-wrap { max-width: 100%; flex: 1 1 100%; order: 3; }
+}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="wordmark"><a href="/">Image Studio</a></div>
+      <span class="nav-breadcrumb">/ History</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/gallery" class="nav-btn">Gallery</a>
+      <a href="/history-view" class="nav-btn active">History</a>
+      <a href="/studio" class="nav-btn">Studio</a>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <h2>Prompt History</h2>
+      <span class="toolbar-count" id="history-count">0 entries</span>
+    </div>
+    <div class="search-wrap">
+      <input type="text" id="search-input" placeholder="Search prompts..." />
+      <span class="search-icon">&#x2315;</span>
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn-sm danger" id="clear-all-btn">Clear All</button>
+    </div>
+  </div>
+
+  <div class="history-scroll">
+    <div class="history-list" id="history-list">
+      <div class="history-empty">
+        No history yet.
+        <br><a href="/studio">Generate your first image</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>Prompt Detail</h2>
+    <button class="sidebar-close" id="sidebar-close">&times;</button>
+  </div>
+  <div class="sidebar-body">
+    <div>
+      <div class="sidebar-label">Original Prompt</div>
+      <p class="sidebar-prompt" id="detail-prompt"></p>
+    </div>
+    <div>
+      <div class="sidebar-label">Revised Prompt</div>
+      <p class="sidebar-revised" id="detail-revised"></p>
+    </div>
+    <div class="sidebar-meta-grid">
+      <div class="sidebar-meta-item">
+        <div class="label">Quality</div>
+        <div class="value" id="detail-quality">&mdash;</div>
+      </div>
+      <div class="sidebar-meta-item">
+        <div class="label">Size</div>
+        <div class="value" id="detail-size">&mdash;</div>
+      </div>
+      <div class="sidebar-meta-item">
+        <div class="label">Count</div>
+        <div class="value" id="detail-count">&mdash;</div>
+      </div>
+      <div class="sidebar-meta-item">
+        <div class="label">Status</div>
+        <div class="value" id="detail-status">&mdash;</div>
+      </div>
+      <div class="sidebar-meta-item" style="grid-column: 1 / -1">
+        <div class="label">Timestamp</div>
+        <div class="value" id="detail-ts">&mdash;</div>
+      </div>
+    </div>
+    <div class="sidebar-actions">
+      <button class="btn btn-accent" id="detail-restore">Restore to Studio</button>
+      <button class="btn btn-outline" id="detail-copy">Copy Prompt</button>
+      <button class="btn-danger-text" id="detail-delete">Delete Entry</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+const state = {
+  entries: [],
+  search: '',
+  detailId: null
+};
+
+const $ = s => document.querySelector(s);
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast success';
+  el.textContent = msg;
+  $('#toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function escHtml(s) {
+  const el = document.createElement('span');
+  el.textContent = s || '';
+  return el.innerHTML;
+}
+
+/* ── Data ─────────────────────────────────────── */
+
+async function loadHistory() {
+  try {
+    const r = await fetch('/history');
+    if (!r.ok) throw new Error('Server error');
+    const data = await r.json();
+    state.entries = data.map(item => ({
+      id: item.id,
+      prompt: item.prompt || '',
+      revised: item.revised_prompt || null,
+      quality: item.quality || 'medium',
+      size: item.size || '1024x1024',
+      n: 1,
+      hasImage: !!item.has_image,
+      success: item.success !== 0,
+      error: item.error_msg || '',
+      ts: item.prompt_ts || new Date().toISOString()
+    }));
+  } catch (e) {
+    state.entries = [];
+  }
+  renderHistory();
+}
+
+/* ── Render ─────────────────────────────────────── */
+
+function getFilteredEntries() {
+  if (!state.search.trim()) return state.entries;
+  const q = state.search.toLowerCase();
+  return state.entries.filter(e =>
+    (e.prompt || '').toLowerCase().includes(q) ||
+    (e.revised || '').toLowerCase().includes(q)
+  );
+}
+
+function renderHistory() {
+  const filtered = getFilteredEntries();
+  $('#history-count').textContent = `${filtered.length} entr${filtered.length === 1 ? 'y' : 'ies'}`;
+
+  if (filtered.length === 0) {
+    $('#history-list').innerHTML = `<div class="history-empty">${state.search ? 'No prompts match your search.' : 'No history yet.'}<br><a href="/studio">Generate your first image</a></div>`;
+    return;
+  }
+
+  $('#history-list').innerHTML = filtered.map(e => {
+    const ts = new Date(e.ts);
+    const dateStr = ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const thumbColor = ['oklch(62% 0.14 25)','oklch(55% 0.12 200)','oklch(50% 0.10 160)','oklch(65% 0.15 50)','oklch(58% 0.13 290)','oklch(52% 0.11 320)','oklch(60% 0.14 100)','oklch(48% 0.08 180)'][e.id % 8];
+    const thumb = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="${thumbColor}"/><circle cx="32" cy="24" r="10" fill="oklch(100% 0 0 / 0.2)"/><rect x="18" y="38" width="28" height="12" rx="2" fill="oklch(0% 0 0 / 0.12)"/></svg>`;
+
+    return `<div class="history-item" data-id="${e.id}">
+      <div class="history-thumb">${thumb}</div>
+      <div class="history-body">
+        <div class="history-prompt">${escHtml(e.prompt)}</div>
+        <div class="history-meta">
+          <span>${dateStr}</span>
+          <span>${e.quality} &middot; ${e.size}</span>
+          ${e.hasImage ? '<span class="ref-tag">+reference</span>' : ''}
+          <span class="status-badge ${e.success ? 'ok' : 'fail'}">${e.success ? 'ok' : 'fail'}</span>
+        </div>
+      </div>
+      <div class="history-actions">
+        <button class="icon-btn restore-btn" data-id="${e.id}" title="Restore">&olarr;</button>
+        <button class="icon-btn danger delete-btn" data-id="${e.id}" title="Delete">&times;</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  $('#history-list').querySelectorAll('.history-item').forEach(el => {
+    el.addEventListener('click', function(e) {
+      if (e.target.closest('.restore-btn') || e.target.closest('.delete-btn')) return;
+      openDetail(parseInt(this.dataset.id));
+    });
+  });
+
+  $('#history-list').querySelectorAll('.restore-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      restoreEntry(parseInt(btn.dataset.id));
+    });
+  });
+
+  $('#history-list').querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      deleteEntry(parseInt(btn.dataset.id));
+    });
+  });
+}
+
+/* ── Detail Sidebar ──────────────────────────────── */
+
+function openDetail(id) {
+  const entry = state.entries.find(e => e.id === id);
+  if (!entry) return;
+  state.detailId = id;
+
+  $('#detail-prompt').textContent = entry.prompt;
+  $('#detail-revised').textContent = entry.revised || '(no revised prompt)';
+  $('#detail-quality').textContent = entry.quality;
+  $('#detail-size').textContent = entry.size;
+  $('#detail-count').textContent = entry.n;
+  $('#detail-status').textContent = entry.success ? 'Success' : 'Failed';
+  $('#detail-ts').textContent = new Date(entry.ts).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', second: '2-digit'
+  });
+
+  $('#sidebar').classList.add('open');
+  $('#sidebar-backdrop').classList.add('open');
+}
+
+function closeDetail() {
+  $('#sidebar').classList.remove('open');
+  $('#sidebar-backdrop').classList.remove('open');
+  state.detailId = null;
+}
+
+$('#sidebar-close').addEventListener('click', closeDetail);
+$('#sidebar-backdrop').addEventListener('click', closeDetail);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+$('#detail-restore').addEventListener('click', () => {
+  if (!state.detailId) return;
+  restoreEntry(state.detailId);
+  closeDetail();
+});
+
+$('#detail-copy').addEventListener('click', () => {
+  if (!state.detailId) return;
+  const entry = state.entries.find(e => e.id === state.detailId);
+  if (!entry) return;
+  const text = entry.revised || entry.prompt;
+  navigator.clipboard.writeText(text).then(() => toast('Prompt copied')).catch(() => toast('Failed to copy'));
+});
+
+$('#detail-delete').addEventListener('click', () => {
+  if (!state.detailId) return;
+  deleteEntry(state.detailId);
+  closeDetail();
+});
+
+/* ── Actions ─────────────────────────────────────── */
+
+async function restoreEntry(id) {
+  try {
+    const r = await fetch('/use-history/' + id, { method: 'POST' });
+    if (!r.ok) throw new Error('Server error');
+    const data = await r.json();
+    localStorage.setItem('image-studio-restore', JSON.stringify({
+      prompt: data.prompt || '',
+      image_b64: data.image_b64 || ''
+    }));
+    toast('Restored — open Studio to continue');
+  } catch (e) {
+    toast('Restore failed');
+  }
+}
+
+async function deleteEntry(id) {
+  try {
+    const r = await fetch('/history/' + id, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Server error');
+    state.entries = state.entries.filter(e => e.id !== id);
+    renderHistory();
+    toast('Entry deleted');
+  } catch (e) {
+    toast('Delete failed');
+  }
+}
+
+$('#clear-all-btn').addEventListener('click', async () => {
+  if (state.entries.length === 0) return;
+  if (!confirm(`Delete all ${state.entries.length} history entries?`)) return;
+  try {
+    for (const e of state.entries) {
+      await fetch('/history/' + e.id, { method: 'DELETE' });
+    }
+    state.entries = [];
+    renderHistory();
+    toast('History cleared');
+  } catch (e) {
+    toast('Clear failed');
+  }
+});
+
+/* ── Search ──────────────────────────────────────── */
+
+$('#search-input').addEventListener('input', () => {
+  state.search = $('#search-input').value;
+  renderHistory();
+});
+
+/* ── Init ────────────────────────────────────────── */
+
+loadHistory();
+</script>
+</body>
+</html>

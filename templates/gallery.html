@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gallery — Image Studio</title>
+<style>
+:root {
+  --bg:      oklch(98% 0.004 95);
+  --surface: oklch(100% 0.002 95);
+  --fg:      oklch(20% 0.018 70);
+  --muted:   oklch(48% 0.012 70);
+  --border:  oklch(90% 0.006 95);
+  --accent:  oklch(52% 0.10 28);
+
+  --font-display: 'Iowan Old Style', 'Charter', Georgia, serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono:    ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --ease: 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── Top Bar ────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  gap: 16px;
+}
+.topbar-left { display: flex; align-items: center; gap: 14px; }
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.wordmark a { text-decoration: none; color: var(--fg); }
+.nav-breadcrumb {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.topbar-right { display: flex; align-items: center; gap: 8px; }
+.nav-btn {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 510;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color var(--ease), color var(--ease);
+}
+.nav-btn:hover { border-color: var(--accent); color: var(--fg); }
+.nav-btn.active { border-color: var(--fg); color: var(--fg); }
+
+/* ── Toolbar ────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.toolbar-left { display: flex; align-items: center; gap: 12px; }
+.toolbar-left h2 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.toolbar-count {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg);
+  font-feature-settings: "tnum";
+}
+.toolbar-right { display: flex; align-items: center; gap: 8px; }
+.filter-btn {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 510;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color var(--ease), color var(--ease), background var(--ease);
+}
+.filter-btn:hover { border-color: var(--accent); color: var(--fg); }
+.filter-btn.active { border-color: var(--fg); color: var(--fg); background: var(--fg); color: var(--bg); }
+
+/* ── Gallery ────────────────────────────────────────── */
+.gallery-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 2px;
+}
+.gallery-card {
+  position: relative;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color var(--ease);
+}
+.gallery-card:hover { border-color: var(--accent); }
+.gallery-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gallery-card .card-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, oklch(0% 0 0 / 0.55) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity var(--ease);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 14px;
+}
+.gallery-card:hover .card-overlay { opacity: 1; }
+.card-overlay .card-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: oklch(100% 0 0 / 0.7);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.card-overlay .btn-ghost {
+  background: oklch(100% 0 0 / 0.15);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid oklch(100% 0 0 / 0.2);
+  color: #fff;
+  padding: 5px 12px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 510;
+  cursor: pointer;
+  transition: background var(--ease);
+}
+.card-overlay .btn-ghost:hover { background: oklch(100% 0 0 / 0.25); }
+
+.gallery-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 100px 24px;
+  color: var(--muted);
+  font-size: 15px;
+  text-align: center;
+  border: 2px dashed var(--border);
+}
+.gallery-empty a {
+  color: var(--accent);
+  text-decoration: none;
+  margin-top: 12px;
+  font-weight: 510;
+}
+
+/* ── Detail Modal ───────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: oklch(0% 0 0 / 0.6);
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ease);
+}
+.modal-backdrop.open { opacity: 1; pointer-events: auto; }
+
+.modal {
+  position: fixed;
+  inset: 40px;
+  z-index: 110;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ease);
+  overflow: hidden;
+}
+.modal.open { opacity: 1; pointer-events: auto; }
+.modal-close {
+  position: absolute;
+  top: 16px; right: 16px;
+  z-index: 120;
+  width: 36px; height: 36px;
+  border: 1px solid var(--fg);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--ease), color var(--ease);
+}
+.modal-close:hover { background: var(--fg); color: var(--bg); }
+
+.modal-image {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(15% 0.01 70);
+  padding: 40px;
+}
+.modal-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.modal-sidebar {
+  width: 340px;
+  min-width: 340px;
+  border-left: 1px solid var(--border);
+  padding: 32px 28px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.modal-sidebar h3 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.modal-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.modal-meta-row .label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.modal-meta-row .value {
+  font-size: 14px;
+  color: var(--fg);
+  font-feature-settings: "tnum";
+}
+.modal-prompt {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+}
+.modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+}
+.modal-actions .btn {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 590;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: none;
+  text-align: center;
+  transition: opacity var(--ease);
+}
+.modal-actions .btn:hover { opacity: 0.88; }
+.btn-accent { background: var(--accent); color: var(--surface); }
+.btn-outline { background: transparent; color: var(--fg); border: 1px solid var(--fg) !important; }
+
+/* ── Toast ──────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 20px; right: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 12px 20px;
+  font-size: 14px;
+  animation: slideIn 0.25s ease;
+  max-width: 360px;
+}
+.toast.success { border-left: 3px solid oklch(58% 0.12 160); }
+@keyframes slideIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Responsive ─────────────────────────────────────── */
+@media (max-width: 860px) {
+  .modal { flex-direction: column; inset: 20px; }
+  .modal-sidebar { width: 100%; min-width: 0; border-left: none; border-top: 1px solid var(--border); }
+  .modal-image { padding: 20px; }
+  .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  .toolbar { padding: 12px 16px; }
+  .gallery-scroll { padding: 16px; }
+}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="wordmark"><a href="/">Image Studio</a></div>
+      <span class="nav-breadcrumb">/ Gallery</span>
+    </div>
+    <div class="topbar-right">
+      <a href="/gallery" class="nav-btn active">Gallery</a>
+      <a href="/history-view" class="nav-btn">History</a>
+      <a href="/studio" class="nav-btn">Studio</a>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <h2>All Generations</h2>
+      <span class="toolbar-count" id="gallery-count">0 images</span>
+    </div>
+    <div class="toolbar-right">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="today">Today</button>
+      <button class="filter-btn" data-filter="week">This Week</button>
+      <button class="filter-btn" data-filter="month">This Month</button>
+    </div>
+  </div>
+
+  <div class="gallery-scroll">
+    <div class="gallery-grid" id="gallery-grid">
+      <div class="gallery-empty">
+        Loading...
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modal-backdrop"></div>
+<div class="modal" id="modal">
+  <button class="modal-close" id="modal-close">&times;</button>
+  <div class="modal-image">
+    <img id="modal-img" src="" alt="" />
+  </div>
+  <div class="modal-sidebar">
+    <h3 id="modal-title">Image Detail</h3>
+    <div class="modal-meta-row">
+      <span class="label">Quality</span>
+      <span class="value" id="modal-quality">&mdash;</span>
+    </div>
+    <div class="modal-meta-row">
+      <span class="label">Size</span>
+      <span class="value" id="modal-size">&mdash;</span>
+    </div>
+    <div class="modal-meta-row">
+      <span class="label">Generated</span>
+      <span class="value" id="modal-date">&mdash;</span>
+    </div>
+    <div class="modal-prompt" id="modal-prompt"></div>
+    <div class="modal-actions">
+      <button class="btn btn-accent" id="modal-download">Download Image</button>
+      <button class="btn btn-outline" id="modal-copy">Copy Prompt</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+const state = {
+  images: [],
+  filter: 'all'
+};
+
+const $ = s => document.querySelector(s);
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast success';
+  el.textContent = msg;
+  $('#toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function escHtml(s) {
+  const el = document.createElement('span');
+  el.textContent = s || '';
+  return el.innerHTML;
+}
+
+/* ── Data ─────────────────────────────────────── */
+
+async function loadImages() {
+  try {
+    const r = await fetch('/history');
+    if (!r.ok) throw new Error('Server error');
+    const data = await r.json();
+    state.images = data
+      .filter(item => item.result_url || item.success)
+      .map(item => ({
+        id: item.id,
+        url: item.result_url || '',
+        label: item.revised_prompt
+          ? item.revised_prompt.slice(0, 40) + '…'
+          : 'Generated ' + item.id,
+        prompt: item.revised_prompt || item.prompt || '',
+        quality: item.quality || 'medium',
+        size: item.size || '1024x1024',
+        ts: item.prompt_ts || new Date().toISOString()
+      }));
+  } catch (e) {
+    state.images = [];
+  }
+  renderGallery();
+}
+
+/* ── Render ─────────────────────────────────────── */
+
+function getFilteredImages() {
+  const now = Date.now();
+  if (state.filter === 'today') {
+    const dayStart = new Date(); dayStart.setHours(0,0,0,0);
+    return state.images.filter(img => new Date(img.ts) >= dayStart);
+  }
+  if (state.filter === 'week') {
+    const weekAgo = now - 7 * 86400000;
+    return state.images.filter(img => new Date(img.ts).getTime() > weekAgo);
+  }
+  if (state.filter === 'month') {
+    const monthAgo = now - 30 * 86400000;
+    return state.images.filter(img => new Date(img.ts).getTime() > monthAgo);
+  }
+  return state.images;
+}
+
+function getImageSrc(img) {
+  if (img.url && img.url.startsWith('data:')) return img.url;
+  if (img.url && (img.url.startsWith('http://') || img.url.startsWith('https://'))) return img.url;
+  return '/download/' + img.id;
+}
+
+function renderGallery() {
+  const filtered = getFilteredImages();
+  $('#gallery-count').textContent = `${filtered.length} image${filtered.length !== 1 ? 's' : ''}`;
+
+  if (filtered.length === 0) {
+    $('#gallery-grid').innerHTML = `<div class="gallery-empty">No images yet.<br><a href="/studio">Generate your first image</a></div>`;
+    return;
+  }
+
+  $('#gallery-grid').innerHTML = filtered.map(img => `
+    <div class="gallery-card" data-id="${img.id}">
+      <img src="${getImageSrc(img)}" alt="${escHtml(img.label)}" loading="lazy" onerror="this.parentElement.style.display='none'" />
+      <div class="card-overlay">
+        <span class="card-meta">${escHtml(img.label)} &middot; ${img.quality}</span>
+        <button class="btn-ghost view-btn" data-id="${img.id}">View</button>
+      </div>
+    </div>`).join('');
+
+  $('#gallery-grid').querySelectorAll('.gallery-card').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('.view-btn')) return;
+      openDetail(parseInt(card.dataset.id));
+    });
+  });
+  $('#gallery-grid').querySelectorAll('.view-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openDetail(parseInt(btn.dataset.id));
+    });
+  });
+}
+
+/* ── Detail Modal ────────────────────────────────── */
+
+let currentDetail = null;
+
+function openDetail(id) {
+  currentDetail = state.images.find(img => img.id === id);
+  if (!currentDetail) return;
+
+  $('#modal-img').src = getImageSrc(currentDetail);
+  $('#modal-img').alt = currentDetail.label;
+  $('#modal-title').textContent = currentDetail.label;
+  $('#modal-quality').textContent = currentDetail.quality;
+  $('#modal-size').textContent = currentDetail.size;
+  $('#modal-date').textContent = new Date(currentDetail.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  $('#modal-prompt').textContent = currentDetail.prompt;
+
+  $('#modal').classList.add('open');
+  $('#modal-backdrop').classList.add('open');
+}
+
+function closeDetail() {
+  $('#modal').classList.remove('open');
+  $('#modal-backdrop').classList.remove('open');
+  currentDetail = null;
+}
+
+$('#modal-close').addEventListener('click', closeDetail);
+$('#modal-backdrop').addEventListener('click', closeDetail);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+$('#modal-download').addEventListener('click', () => {
+  if (!currentDetail) return;
+  const a = document.createElement('a');
+  a.href = getImageSrc(currentDetail);
+  a.download = `image-${currentDetail.id}.png`;
+  a.click();
+  toast('Download started');
+});
+
+$('#modal-copy').addEventListener('click', () => {
+  if (!currentDetail) return;
+  navigator.clipboard.writeText(currentDetail.prompt).then(() => toast('Prompt copied')).catch(() => toast('Failed to copy'));
+});
+
+/* ── Filters ─────────────────────────────────────── */
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.filter = btn.dataset.filter;
+    renderGallery();
+  });
+});
+
+/* ── Init ────────────────────────────────────────── */
+
+loadImages();
+</script>
+</body>
+</html>

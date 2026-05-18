@@ -1,0 +1,639 @@
+"""
+GPT Image 2 Generator with Prompt Memory
+Features:
+  - Upload image → GPT-4o vision analyzes → enhanced prompt
+  - Prompt history stored in SQLite
+  - Modern dark UI
+Usage: OPENAI_API_KEY=... python app.py
+"""
+
+import os
+import io
+import sqlite3
+import base64
+import time
+import json
+from datetime import datetime
+from functools import wraps
+
+import requests
+from flask import Flask, render_template, request, jsonify, send_file, abort, make_response
+from PIL import Image
+from openai import OpenAI
+
+# ── Config ──────────────────────────────────────────────────────────────────────
+API_KEY    = os.environ.get("OPENAI_API_KEY", "")
+PORT       = 5001
+DB_PATH    = os.path.join(os.path.dirname(__file__), "prompts.db")
+
+app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
+
+# ── Facebook Config ────────────────────────────────────────────────────────────
+FB_APP_ID     = os.environ.get("FB_APP_ID", "1509522633850909")
+FB_APP_SECRET = os.environ.get("FB_APP_SECRET", "9e380e089e5c9ddb51553be21a035a2e")
+FB_REDIRECT   = "http://localhost:5001/fb-callback"
+FB_PAGE_TOKEN_FILE = os.path.expanduser("~/.hermes/fb_page_token")
+KEY_FILE   = os.path.expanduser("~/.image-studio.env")
+
+# Load persisted API key on startup if not already set
+if not API_KEY and os.path.exists(KEY_FILE):
+    with open(KEY_FILE) as f:
+        for line in f:
+            if line.startswith("OPENAI_API_KEY="):
+                API_KEY = line.strip().split("=", 1)[1].strip('"').strip("'")
+                os.environ["OPENAI_API_KEY"] = API_KEY
+                break
+
+# ── Block direct db file access ─────────────────────────────────────────────────
+@app.before_request
+def block_db_access():
+    if request.path == "/prompts.db":
+        abort(403)
+
+# ── DB Setup ───────────────────────────────────────────────────────────────────
+def init_db():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS prompts (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                prompt      TEXT    NOT NULL,
+                image_b64   TEXT,
+                revised_prompt TEXT,
+                quality     TEXT,
+                size        TEXT,
+                model       TEXT,
+                prompt_ts   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                result_url  TEXT,
+                result_b64  TEXT,
+                success     INTEGER DEFAULT 1,
+                error_msg   TEXT
+            )
+        """)
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+THUMB_MAX = 512   # max dimension for stored thumbnails
+THUMB_QUALITY = 75
+
+def make_thumbnail(b64_data: str) -> str:
+    """Resize base64 image to max THUMB_MAX px, return smaller base64 JPEG."""
+    if not b64_data:
+        return b64_data
+    try:
+        img_bytes = base64.b64decode(b64_data)
+        img = Image.open(io.BytesIO(img_bytes))
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        w, h = img.size
+        if w > THUMB_MAX or h > THUMB_MAX:
+            ratio = min(THUMB_MAX / w, THUMB_MAX / h)
+            img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=THUMB_QUALITY)
+        return base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return b64_data   # fallback: keep original
+
+def get_client():
+    return OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+def api_key_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not os.environ.get("OPENAI_API_KEY"):
+            return jsonify(error="OPENAI_API_KEY not set"), 500
+        return f(*args, **kwargs)
+    return decorated
+
+def save_prompt(prompt, image_b64, revised, quality, size, model,
+                result_url, result_b64, success, error_msg=""):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            INSERT INTO prompts
+                (prompt, image_b64, revised_prompt, quality, size, model,
+                 result_url, result_b64, success, error_msg)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        """, (prompt, image_b64 or None, revised, quality, size, model,
+              result_url, result_b64, int(success), error_msg))
+
+# ── Routes ─────────────────────────────────────────────────────────────────────
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+@app.route("/history", methods=["GET"])
+def history():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT id, prompt, revised_prompt, quality, size, model,
+                   prompt_ts, result_url, success, error_msg,
+                   CASE WHEN image_b64 IS NOT NULL THEN 1 ELSE 0 END as has_image
+            FROM prompts ORDER BY id DESC LIMIT 100
+        """).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/history/<int:pid>", methods=["GET"])
+def get_history_item(pid):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM prompts WHERE id=?", (pid,)
+        ).fetchone()
+    if not row:
+        return jsonify(error="Not found"), 404
+    return jsonify(dict(row))
+
+@app.route("/history/<int:pid>", methods=["DELETE"])
+def delete_history(pid):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DELETE FROM prompts WHERE id=?", (pid,))
+    return jsonify(status="ok")
+
+@app.route("/use-history/<int:pid>", methods=["POST"])
+def use_history(pid):
+    """Load a history item's prompt into the editor"""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT prompt, image_b64 FROM prompts WHERE id=?", (pid,)
+        ).fetchone()
+    if not row:
+        return jsonify(error="Not found"), 404
+    return jsonify({
+        "prompt": row["prompt"],
+        "image_b64": row["image_b64"]
+    })
+
+@app.route("/enhance-prompt", methods=["POST"])
+@api_key_required
+def enhance_prompt():
+    data = request.get_json()
+    if not data:
+        return jsonify(error="Invalid JSON body"), 400
+    prompt     = (data.get("prompt") or "").strip()
+    image_b64  = data.get("image_b64") or ""
+
+    if not prompt and not image_b64:
+        return jsonify(error="Prompt or image required"), 400
+
+    try:
+        client = get_client()
+        messages = []
+
+        if image_b64 and prompt:
+            messages.append({
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "You are a creative image prompt writer for AI image generation.\n\n"
+                            "Look at this reference photo and describe its overall visual style — "
+                            "the subject's general appearance, clothing style, pose, expression, "
+                            "color scheme, lighting, and composition. Think of it as a style "
+                            "reference for creating new artistic images, not as identifying "
+                            "a specific individual.\n\n"
+                            "Then write a detailed English prompt for AI image generation "
+                            "that combines this visual reference with the concept below.\n\n"
+                            f"CONCEPT:\n{prompt}\n\n"
+                            "Guidelines:\n"
+                            "- Describe the subject in terms of visual style, not biometric details\n"
+                            "- Blend the reference photo's aesthetic with the concept\n"
+                            "- Include scene, lighting, color palette, mood, composition\n"
+                            "- For 'mini characters' or multi-subject scenes: describe each "
+                            "subject's appearance, pose, position, and relative size\n"
+                            "- Output ONLY the English prompt, one paragraph, no markdown."
+                        )
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_b64}"
+                        }
+                    }
+                ]
+            })
+        elif image_b64:
+            messages.append({
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "Look at this image and write a detailed English prompt for "
+                            "AI image generation that captures its visual style. "
+                            "Describe the overall scene, composition, lighting, color palette "
+                            "and mood in artistic terms. "
+                            "Output ONLY the English prompt, one paragraph, no explanations."
+                        )
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_b64}"
+                        }
+                    }
+                ]
+            })
+        else:
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Enhance the following image generation prompt to be more detailed "
+                    "and visually precise. Add detail about composition, lighting, "
+                    "color palette, mood, and artistic style. "
+                    "Output ONLY the English prompt, one paragraph, no explanations.\n\n"
+                    f"Original prompt: {prompt}"
+                )
+            })
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            max_tokens=500,
+            temperature=0.7
+        )
+        enhanced = response.choices[0].message.content.strip()
+        # Remove quotes if model wrapped in them
+        enhanced = enhanced.strip('"\'')
+        # Detect content policy refusal
+        refusal_patterns = [
+            "I'm sorry", "I can't assist", "I cannot assist",
+            "I can't help", "I cannot help", "I apologize",
+            "I can't comply", "I cannot comply"
+        ]
+        if any(enhanced.lower().startswith(p.lower()) for p in refusal_patterns):
+            return jsonify(error="Content policy restriction — try a different prompt"), 422
+        return jsonify(enhanced=enhanced)
+
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route("/generate", methods=["POST"])
+@api_key_required
+def generate():
+    data       = request.get_json()
+    prompt     = (data.get("prompt") or "").strip()
+    image_b64  = data.get("image_b64") or ""
+    quality    = data.get("quality", "medium")
+    size       = data.get("size", "1024x1024")
+    n          = max(min(int(data.get("n", 1)), 4), 1)
+
+    if not prompt:
+        return jsonify(error="Prompt is required"), 400
+
+    # Image size guard: reject oversized uploads before decoding
+    if image_b64 and len(image_b64) > 15 * 1024 * 1024:
+        return jsonify(error="Image too large (max ~10MB raw)"), 413
+
+    try:
+        client = get_client()
+        kwargs = dict(
+            model="gpt-image-2",
+            prompt=prompt,
+            n=n,
+            quality=quality,
+            size=size,
+        )
+
+        if image_b64:
+            # Reference image — convert to RGB PNG (required by gpt-image-2)
+            img_bytes = base64.b64decode(image_b64)
+            img = Image.open(io.BytesIO(img_bytes))
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+            # Resize if too large
+            w, h = img.size
+            max_dim = 2048
+            if w > max_dim or h > max_dim:
+                ratio = min(max_dim / w, max_dim / h)
+                img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            buf.seek(0)
+            buf.name = 'reference.png'
+            kwargs["image"] = buf
+            # images.edit only supports certain sizes + 'auto'
+            edit_sizes = {'256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'}
+            if size not in edit_sizes:
+                kwargs["size"] = 'auto'
+            response = client.images.edit(**kwargs)
+        else:
+            # Text-to-image generation
+            response = client.images.generate(**kwargs)
+
+    except Exception as e:
+        save_prompt(prompt, image_b64, None, quality, size,
+                    "gpt-image-2", None, None, False, str(e))
+        return jsonify(error=str(e)), 500
+
+    results = []
+    for img in response.data:
+        if img.url:
+            results.append({"url": img.url, "revised_prompt": img.revised_prompt})
+            save_prompt(prompt, image_b64, img.revised_prompt, quality, size,
+                        "gpt-image-2", img.url, None, True)
+        elif img.b64_json:
+            data_url = f"data:image/png;base64,{img.b64_json}"
+            results.append({"url": data_url, "revised_prompt": img.revised_prompt})
+            save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
+                        img.revised_prompt, quality, size,
+                        "gpt-image-2", None, make_thumbnail(img.b64_json), True)
+
+    return jsonify(results=results)
+
+@app.route("/studio")
+def studio():
+    return render_template("studio.html",
+                           api_key_set=bool(os.environ.get("OPENAI_API_KEY")),
+                           set_key_secret=os.environ.get("SET_KEY_SECRET", ""))
+
+
+@app.route("/gallery")
+def gallery():
+    return render_template("gallery.html")
+
+
+@app.route("/history-view")
+def history_view():
+    return render_template("history.html")
+
+
+@app.route("/templates")
+def prompt_templates():
+    return render_template("templates.html")
+
+@app.route("/api/community-prompts")
+def community_prompts_api():
+    """Return community_prompts grouped by category for the templates page."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT id, title, category, platform, author, image_url,
+                   source_url, prompt, score
+            FROM community_prompts
+            ORDER BY category, id
+        """).fetchall()
+    grouped = {}
+    for r in rows:
+        cat = r["category"] or "其他"
+        if cat not in grouped:
+            grouped[cat] = []
+        grouped[cat].append({
+            "id": r["id"],
+            "title": r["title"],
+            "platform": r["platform"],
+            "author": r["author"],
+            "image_url": r["image_url"],
+            "source_url": r["source_url"],
+            "prompt": r["prompt"],
+            "score": r["score"]
+        })
+    return jsonify(grouped)
+
+
+# ── Facebook Routes ──────────────────────────────────────────────────────────
+def _load_page_token(page_id=""):
+    """Load page token. If page_id provided, returns that page's token."""
+    try:
+        if os.path.exists(FB_PAGE_TOKEN_FILE):
+            with open(FB_PAGE_TOKEN_FILE) as f:
+                for line in f:
+                    line = line.strip()
+                    if ":" in line:
+                        pid, ptoken = line.split(":", 1)
+                        if page_id and pid == page_id:
+                            return ptoken
+                        elif not page_id:
+                            return ptoken  # return first one
+    except: pass
+    return ""
+
+def _save_page_token(token, page_id=""):
+    """Save page token. Appends to file to support multiple pages."""
+    existing = {}
+    try:
+        if os.path.exists(FB_PAGE_TOKEN_FILE):
+            with open(FB_PAGE_TOKEN_FILE) as f:
+                for line in f:
+                    if ":" in line:
+                        pid, ptoken = line.strip().split(":", 1)
+                        existing[pid] = ptoken
+    except: pass
+    existing[page_id] = token
+    with open(FB_PAGE_TOKEN_FILE, "w") as f:
+        for pid, ptoken in existing.items():
+            f.write(f"{pid}:{ptoken}\n")
+
+@app.route("/fb-auth-url")
+def fb_auth_url():
+    from urllib.parse import quote
+    url = (
+        "https://www.facebook.com/v22.0/dialog/oauth"
+        f"?client_id={FB_APP_ID}"
+        f"&redirect_uri={quote(FB_REDIRECT, safe='')}"
+        "&scope=pages_manage_posts,pages_read_engagement,pages_show_list"
+        "&response_type=code"
+    )
+    return jsonify(url=url)
+
+@app.route("/fb-callback")
+def fb_callback():
+    code = request.args.get("code", "")
+    if not code:
+        return "<h1>Error: No code</h1>", 400
+
+    try:
+        # Exchange code for User Access Token
+        r = requests.get("https://graph.facebook.com/v22.0/oauth/access_token", params={
+            "client_id": FB_APP_ID,
+            "client_secret": FB_APP_SECRET,
+            "redirect_uri": FB_REDIRECT,
+            "code": code
+        }, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        user_token = data.get("access_token", "")
+        if not user_token:
+            return f"<h1>Failed to get token</h1><pre>{json.dumps(data, indent=2)}</pre>", 400
+
+        # Get pages
+        r2 = requests.get("https://graph.facebook.com/v22.0/me/accounts", params={
+            "access_token": user_token
+        }, timeout=10)
+        r2.raise_for_status()
+        pages_data = r2.json()
+        pages = pages_data.get("data", [])
+
+        if not pages:
+            return "<h1>No Pages found</h1><p>This account doesn't manage any Facebook Pages.</p>", 400
+
+        # Save all page tokens
+        for p in pages:
+            _save_page_token(p["access_token"], p["id"])
+
+        # Build response
+        html = "<h1>✅ Authorized!</h1><ul>"
+        for p in pages:
+            html += f"<li><b>{p.get('name', 'Unknown')}</b> — ID: {p['id']}</li>"
+        html += "</ul><p>Page tokens saved. You can now close this page.</p>"
+        return html
+
+    except Exception as e:
+        return f"<h1>Error</h1><pre>{str(e)}</pre>", 500
+
+@app.route("/fb-post", methods=["POST"])
+def fb_post():
+    """Post an image to a Facebook page.
+    Body: {page_id, message, image_path (local) or image_url}
+    """
+    data = request.get_json() or {}
+    page_id = data.get("page_id", "")
+    message = data.get("message", "")
+    image_path = data.get("image_path", "")
+    image_url  = data.get("image_url", "")
+
+    # Load page token
+    token = _load_page_token(page_id)
+    if not token:
+        return jsonify(error="No page token. Run /fb-auth-url first."), 401
+
+    try:
+        params = {"access_token": token, "message": message} if message else {"access_token": token}
+
+        if image_path and os.path.exists(image_path):
+            # Upload as multipart
+            import mimetypes
+            mime_type = mimetypes.guess_type(image_path)[0] or "image/png"
+            with open(image_path, "rb") as img:
+                files = {"source": (os.path.basename(image_path), img, mime_type)}
+                r = requests.post(
+                    f"https://graph.facebook.com/v22.0/{page_id}/photos",
+                    data=params, files=files, timeout=30
+                )
+        elif image_url:
+            params["url"] = image_url
+            r = requests.post(
+                f"https://graph.facebook.com/v22.0/{page_id}/photos",
+                data=params, timeout=30
+            )
+        else:
+            return jsonify(error="image_path or image_url required"), 400
+
+        result = r.json()
+        if "id" in result:
+            return jsonify(status="ok", post_id=result["id"], page_id=page_id)
+        else:
+            return jsonify(error=result.get("error", {}).get("message", str(result))), 400
+
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route("/fb-pages")
+def fb_pages():
+    """List pages with saved tokens."""
+    pages = []
+    found = False
+    try:
+        with open(FB_PAGE_TOKEN_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if ":" in line:
+                    pid, ptoken = line.split(":", 1)
+                    pages.append({"id": pid})
+                    found = True
+    except FileNotFoundError:
+        pass
+    if not found:
+        return jsonify(error="No Facebook token configured. Visit /fb-auth-url to authorize."), 400
+    return jsonify(pages=pages)
+
+@app.route("/fb-token-test")
+def fb_token_test():
+    """Test if a saved page token is still valid."""
+    token = _load_page_token()
+    if not token:
+        return jsonify(valid=False, error="No token configured")
+    try:
+        url = f"https://graph.facebook.com/v22.0/me?access_token={token}"
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        if r.status_code == 200:
+            return jsonify(valid=True, page_name=data.get("name", "Unknown"), page_id=data.get("id", ""))
+        else:
+            return jsonify(valid=False, error=data.get("error", {}).get("message", "Unknown error"))
+    except Exception as e:
+        return jsonify(valid=False, error=str(e))
+
+@app.route("/health")
+def health():
+    return jsonify(status="ok")
+
+@app.route("/favicon.ico")
+def favicon():
+    # Simple 1x1 transparent PNG favicon
+    import struct, zlib
+    def create_png():
+        # 16x16 blue square favicon
+        width, height = 16, 16
+        raw = b''
+        for y in range(height):
+            raw += b'\x00'  # filter byte
+            for x in range(width):
+                raw += b'\x1a\x56\xd8\xff'  # RGBA blue
+        def chunk(ctype, data):
+            c = ctype + data
+            return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+        ihdr = struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)
+        idat = zlib.compress(raw)
+        return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr) + chunk(b'IDAT', idat) + chunk(b'IEND', b'')
+    return send_file(io.BytesIO(create_png()), mimetype='image/png')
+
+
+@app.route("/set-key", methods=["POST"])
+def set_key():
+    """Set API key at runtime. Requires SET_KEY_SECRET header to prevent abuse."""
+    secret = os.environ.get("SET_KEY_SECRET", "")
+    if secret and request.headers.get("X-Set-Key-Secret") != secret:
+        return jsonify(status="error", message="Forbidden"), 403
+    data = request.get_json()
+    key = (data.get("api_key") or "").strip()
+    if not key or not key.startswith("sk-"):
+        return jsonify(status="error", message="Invalid API key"), 400
+    os.environ["OPENAI_API_KEY"] = key
+    global API_KEY
+    API_KEY = key
+    # Persist to disk so it survives restarts
+    with open(KEY_FILE, "w") as f:
+        f.write(f"OPENAI_API_KEY={key}\n")
+    return jsonify(status="ok")
+
+@app.route("/download/<int:pid>", methods=["GET"])
+def download(pid):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT result_b64, result_url FROM prompts WHERE id=?", (pid,)
+        ).fetchone()
+    if not row:
+        return jsonify(error="Not found"), 404
+    if row["result_b64"]:
+        img_data = base64.b64decode(row["result_b64"])
+        return send_file(
+            io.BytesIO(img_data),
+            mimetype="image/png",
+            as_attachment=True,
+            download_name=f"img_{pid}.png"
+        )
+    elif row["result_url"]:
+        return jsonify(url=row["result_url"])
+    return jsonify(error="No image data"), 404
+
+if __name__ == "__main__":
+    init_db()  # only on direct execution, not on module import
+    if not os.environ.get("OPENAI_API_KEY"):
+        print("WARNING: OPENAI_API_KEY environment variable is not set.")
+        print("Set it with:  export OPENAI_API_KEY=sk-...")
+    print(f"Open http://localhost:{PORT}")
+    app.run(host="127.0.0.1", port=PORT, debug=False)

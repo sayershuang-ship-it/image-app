@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Image Studio — AI Image Generation Powered by GPT Image 2</title>
+<style>
+:root {
+  --bg:      oklch(98% 0.004 95);
+  --surface: oklch(100% 0.002 95);
+  --fg:      oklch(20% 0.018 70);
+  --muted:   oklch(48% 0.012 70);
+  --border:  oklch(90% 0.006 95);
+  --accent:  oklch(52% 0.10 28);
+
+  --font-display: 'Iowan Old Style', 'Charter', Georgia, serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono:    ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --max-width: 1200px;
+  --ease: 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 17px/1.6 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Nav ──────────────────────────────────────────────── */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+}
+.nav-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+}
+.nav-wordmark {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  color: var(--fg);
+}
+.nav-links {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+  list-style: none;
+}
+.nav-links a {
+  font-size: 15px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color var(--ease);
+}
+.nav-links a:hover { color: var(--fg); }
+.nav-cta {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 590;
+  padding: 8px 20px;
+  border: 1.5px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--surface);
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity var(--ease);
+  white-space: nowrap;
+}
+.nav-cta:hover { opacity: 0.88; }
+
+/* ── Sections ─────────────────────────────────────────── */
+.section {
+  padding: 100px 32px;
+}
+.section-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
+/* ── Hero ─────────────────────────────────────────────── */
+.hero {
+  padding: 120px 32px 100px;
+  text-align: center;
+}
+.hero-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 20px;
+}
+.hero h1 {
+  font-family: var(--font-display);
+  font-size: clamp(48px, 7vw, 80px);
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  max-width: 900px;
+  margin: 0 auto 24px;
+}
+.hero-sub {
+  font-size: clamp(18px, 2.2vw, 22px);
+  color: var(--muted);
+  max-width: 560px;
+  margin: 0 auto 40px;
+  line-height: 1.55;
+}
+.hero-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.btn-primary {
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 590;
+  padding: 14px 32px;
+  border: 1.5px solid var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity var(--ease);
+}
+.btn-primary:hover { opacity: 0.88; }
+.btn-outline {
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 500;
+  padding: 14px 32px;
+  border: 1.5px solid var(--fg);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--ease);
+}
+.btn-outline:hover { background: var(--fg); color: var(--bg); }
+
+.hero-visual {
+  margin-top: 64px;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  border: 2px solid var(--border);
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  background: var(--surface);
+  position: relative;
+  overflow: hidden;
+}
+.hero-visual-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+}
+.hero-visual-grid .cell {
+  background: var(--border);
+  transition: background 0.4s ease;
+}
+.hero-visual-grid .cell:nth-child(1) { background: oklch(62% 0.12 35); }
+.hero-visual-grid .cell:nth-child(2) { background: oklch(58% 0.10 200); }
+.hero-visual-grid .cell:nth-child(3) { background: oklch(55% 0.08 140); }
+.hero-visual-grid .cell:nth-child(4) { background: oklch(68% 0.14 55); }
+.hero-visual-grid .cell:nth-child(5) { background: oklch(45% 0.06 260); }
+.hero-visual-grid .cell:nth-child(6) { background: oklch(60% 0.12 15); }
+.hero-visual-grid .cell:nth-child(7) { background: oklch(52% 0.10 180); }
+.hero-visual-grid .cell:nth-child(8) { background: oklch(65% 0.13 40); }
+.hero-visual-grid .cell:nth-child(9) { background: oklch(50% 0.08 290); }
+
+/* ── How It Works ─────────────────────────────────────── */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  margin-top: 48px;
+}
+.step {
+  background: var(--surface);
+  padding: 48px 36px 40px;
+  border: 1px solid var(--border);
+}
+.step-num {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent);
+  margin-bottom: 20px;
+  letter-spacing: 0.04em;
+}
+.step h3 {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 500;
+  margin-bottom: 12px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.step p {
+  font-size: 15px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+/* ── Features ─────────────────────────────────────────── */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px;
+  margin-top: 48px;
+}
+.feature {
+  background: var(--surface);
+  padding: 40px 36px;
+  border: 1px solid var(--border);
+}
+.feature-kicker {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.feature h3 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  margin-bottom: 10px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.feature p {
+  font-size: 15px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* ── Showcase ─────────────────────────────────────────── */
+.showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  margin-top: 48px;
+}
+.showcase-item {
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.showcase-item .swatch {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── CTA Footer ───────────────────────────────────────── */
+.cta-section {
+  padding: 120px 32px;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+.cta-section h2 {
+  font-family: var(--font-display);
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  max-width: 700px;
+  margin: 0 auto 20px;
+}
+.cta-section p {
+  font-size: 18px;
+  color: var(--muted);
+  max-width: 480px;
+  margin: 0 auto 36px;
+  line-height: 1.55;
+}
+
+/* ── Footer ───────────────────────────────────────────── */
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 40px 32px;
+}
+.footer-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.footer-links {
+  display: flex;
+  gap: 24px;
+  list-style: none;
+}
+.footer-links a {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color var(--ease);
+}
+.footer-links a:hover { color: var(--fg); }
+
+/* ── Section Headers ──────────────────────────────────── */
+.section-header {
+  margin-bottom: 8px;
+}
+.section-header h2 {
+  font-family: var(--font-display);
+  font-size: clamp(32px, 4.5vw, 48px);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+}
+.section-header p {
+  font-size: 17px;
+  color: var(--muted);
+  max-width: 540px;
+  line-height: 1.55;
+}
+
+/* ── App Screen Links ─────────────────────────────────── */
+.app-links {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  margin-top: 48px;
+}
+.app-link {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 36px 32px;
+  text-decoration: none;
+  color: var(--fg);
+  transition: border-color var(--ease);
+}
+.app-link:hover { border-color: var(--accent); }
+.app-link .app-kicker {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.app-link h3 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+.app-link p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── Responsive ───────────────────────────────────────── */
+@media (max-width: 860px) {
+  .steps { grid-template-columns: 1fr; }
+  .features-grid { grid-template-columns: 1fr; }
+  .showcase-grid { grid-template-columns: repeat(2, 1fr); }
+  .app-links { grid-template-columns: repeat(2, 1fr); }
+  .nav-links { display: none; }
+  .section { padding: 64px 20px; }
+  .hero { padding: 80px 20px 64px; }
+  .cta-section { padding: 80px 20px; }
+  .footer-inner { flex-direction: column; gap: 16px; text-align: center; }
+  .footer-links { flex-wrap: wrap; justify-content: center; }
+}
+@media (max-width: 480px) {
+  .showcase-grid { grid-template-columns: 1fr 1fr; }
+  .hero h1 { font-size: 36px; }
+  .hero-visual { aspect-ratio: 4/3; }
+  .nav { padding: 0 16px; }
+  .step { padding: 32px 24px; }
+  .feature { padding: 28px 24px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-wordmark">Image Studio</a>
+    <ul class="nav-links">
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#showcase">Showcase</a></li>
+      <li><a href="#app">Try It</a></li>
+      <li><a href="/templates">Templates</a></li>
+    </ul>
+    <a href="/studio" class="nav-cta">Open Studio</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-tag">Powered by GPT Image 2</div>
+  <h1>Images that start with intent, not guesswork</h1>
+  <p class="hero-sub">Upload a reference, describe your vision, and let GPT Image 2 generate precisely what you imagined. Prompt memory keeps your best ideas within reach.</p>
+  <div class="hero-actions">
+    <a href="/studio" class="btn-primary">Try Image Studio</a>
+    <a href="#how-it-works" class="btn-outline">See how it works</a>
+  </div>
+  <div class="hero-visual">
+    <div class="hero-visual-grid">
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="how-it-works">
+  <div class="section-inner">
+    <div class="section-header">
+      <div class="section-label">How It Works</div>
+      <h2>Three steps from idea to image</h2>
+      <p>No prompt engineering required. Drop in a reference, describe what you want, and let the model do the heavy lifting.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <h3>Upload a reference</h3>
+        <p>Drop a photo, sketch, or style reference. GPT-4o Vision analyzes it and folds the visual context into your prompt automatically.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <h3>Describe your vision</h3>
+        <p>Write what you want in plain language. Hit "Translate &amp; Enhance" and GPT-4o rewrites it into a detailed, model-optimized prompt.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <h3>Generate &amp; refine</h3>
+        <p>Choose quality, size, and count. Generate multiple variations at once. Download, copy prompts, and iterate from history.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="features">
+  <div class="section-inner">
+    <div class="section-header">
+      <div class="section-label">Features</div>
+      <h2>Built for people who generate a lot of images</h2>
+      <p>Not a toy. Real controls, persistent history, and tooling for iteration at speed.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature">
+        <div class="feature-kicker">Context-aware</div>
+        <h3>Reference image upload</h3>
+        <p>Drop a JPEG, PNG, or WebP and GPT-4o Vision reads the style, composition, and palette before enhancing your prompt. No more guessing at style tokens.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-kicker">Prompt engineering, automated</div>
+        <h3>GPT-4o prompt translation</h3>
+        <p>Write casually. One click runs your prompt through GPT-4o, which expands it into the kind of detailed, structured description that GPT Image 2 responds to best.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-kicker">Full control</div>
+        <h3>Quality, size &amp; count</h3>
+        <p>Low, medium, or high quality. Sizes from 1024&times;1024 up to 2048&times;2048. Generate 1&ndash;4 variations per run. Every parameter is exposed.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-kicker">Never lose a good prompt</div>
+        <h3>Persistent prompt memory</h3>
+        <p>Every generation is saved to SQLite with the original prompt, revised prompt, parameters, and result. Search, restore, and iterate from anything in your history.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="showcase">
+  <div class="section-inner">
+    <div class="section-header">
+      <div class="section-label">Showcase</div>
+      <h2>What GPT Image 2 can do</h2>
+      <p>From photorealistic renders to stylized illustrations &mdash; the model handles a wide range with a single prompt.</p>
+    </div>
+    <div class="showcase-grid">
+      <div class="showcase-item"><div class="swatch" style="background:oklch(55% 0.14 25)"></div></div>
+      <div class="showcase-item"><div class="swatch" style="background:oklch(60% 0.12 200)"></div></div>
+      <div class="showcase-item"><div class="swatch" style="background:oklch(50% 0.10 160)"></div></div>
+      <div class="showcase-item"><div class="swatch" style="background:oklch(65% 0.15 50)"></div></div>
+      <div class="showcase-item"><div class="swatch" style="background:oklch(45% 0.08 280)"></div></div>
+      <div class="showcase-item"><div class="swatch" style="background:oklch(58% 0.13 100)"></div></div>
+      <div class="showcase-item"><div class="swatch" style="background:oklch(52% 0.11 320)"></div></div>
+      <div class="showcase-item"><div class="swatch" style="background:oklch(62% 0.14 10)"></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="app">
+  <div class="section-inner">
+    <div class="section-header">
+      <div class="section-label">Product</div>
+      <h2>See the studio in action</h2>
+      <p>Explore the core surfaces of Image Studio &mdash; each designed for a specific part of the creative workflow.</p>
+    </div>
+    <div class="app-links">
+      <a href="/studio" class="app-link">
+        <div class="app-kicker">Screen 01</div>
+        <h3>Studio Workspace</h3>
+        <p>The main generation interface &mdash; upload, prompt, configure, and generate in one view.</p>
+      </a>
+      <a href="/gallery" class="app-link">
+        <div class="app-kicker">Screen 02</div>
+        <h3>Image Gallery</h3>
+        <p>Browse, inspect, and download your generated images. Copy prompts from any result.</p>
+      </a>
+      <a href="/history-view" class="app-link">
+        <div class="app-kicker">Screen 03</div>
+        <h3>Prompt History</h3>
+        <p>Every generation saved. Restore any past prompt and its reference image to pick up where you left off.</p>
+      </a>
+      <a href="/templates" class="app-link">
+        <div class="app-kicker">Tool</div>
+        <h3>Prompt Templates</h3>
+        <p>A library of 21 ready-made prompt templates for UI, branding, photography, illustration, and more.</p>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="cta-section">
+  <h2>Ready to generate with intent?</h2>
+  <p>Image Studio is free and open source. Bring your own OpenAI API key and start generating in seconds.</p>
+  <a href="/studio" class="btn-primary">Open Image Studio</a>
+</section>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <span>Image Studio &mdash; Powered by GPT Image 2</span>
+    <ul class="footer-links">
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#showcase">Showcase</a></li>
+      <li><a href="/templates">Templates</a></li>
+      <li><a href="/studio">Open Studio</a></li>
+    </ul>
+  </div>
+</footer>
+
+</body>
+</html>
