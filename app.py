@@ -279,9 +279,24 @@ def generate():
     quality    = data.get("quality", "medium")
     size       = data.get("size", "1024x1024")
     n          = max(min(int(data.get("n", 1)), 4), 1)
+    negative   = (data.get("negative_prompt") or "").strip()
+    variables  = data.get("variables") or {}  # {name: value} for template substitution
 
     if not prompt:
         return jsonify(error="Prompt is required"), 400
+
+    # Template variable substitution: {argument name="..." default="..."}
+    import re as _re
+    def _resolve_vars(text):
+        def _sub(m):
+            name = m.group(1)
+            default = m.group(2) or ""
+            return variables.get(name, default)
+        return _re.sub(r'\{argument\s+name="([^"]+)"(?:\s+default="([^"]*)")?\s*\}', _sub, text)
+    prompt = _resolve_vars(prompt)
+    if negative:
+        negative = _resolve_vars(negative)
+        prompt = f"{prompt}\n\nNegative Prompt:\n{negative}"
 
     # Image size guard: reject oversized uploads before decoding
     if image_b64 and len(image_b64) > 15 * 1024 * 1024:
