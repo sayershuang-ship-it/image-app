@@ -427,6 +427,35 @@ body {
   display: inline-block;
   flex-shrink: 0;
 }
+
+/* ── Generating progress state ────────────────────────── */
+.gallery-generating {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  gap: 16px;
+  grid-column: 1 / -1;
+}
+.gen-spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.gen-label {
+  font-size: 15px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.gen-elapsed {
+  font-size: 13px;
+  color: var(--muted);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Responsive ───────────────────────────────────────── */
@@ -756,21 +785,65 @@ async function doEnhance() {
 }
 
 generateBtn.addEventListener('click', doGenerate);
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function showGeneratingProgress(startTime) {
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  galleryGrid.innerHTML = `
+    <div class="gallery-generating">
+      <div class="gen-spinner"></div>
+      <div class="gen-label">Generating…</div>
+      <div class="gen-elapsed" id="gen-elapsed">${elapsed}s</div>
+    </div>`;
+  galleryHeading.textContent = 'Working…';
+  gallerySub.style.display = 'none';
+}
+
+async function pollJob(jobId, startTime) {
+  const INTERVAL = 1500;
+  const TIMEOUT  = 180_000; // 3 min hard cap
+  while (Date.now() - startTime < TIMEOUT) {
+    await sleep(INTERVAL);
+    // Update elapsed counter if element still exists
+    const el = document.getElementById('gen-elapsed');
+    if (el) el.textContent = Math.floor((Date.now() - startTime) / 1000) + 's';
+
+    const r = await fetch(`/job-status/${jobId}`);
+    if (!r.ok) throw new Error('Lost contact with server');
+    const d = await r.json();
+    if (d.status === 'done')   return d.results;
+    if (d.status === 'failed') throw new Error(d.error || 'Generation failed');
+  }
+  throw new Error('Generation timed out (3 min)');
+}
+
 async function doGenerate() {
   const prompt = promptInput.value.trim();
   if (!prompt) return;
-  state.generating = true; setLoading(generateBtn, true); updateButtons();
+  state.generating = true;
+  setLoading(generateBtn, true);
+  updateButtons();
+  const startTime = Date.now();
+  showGeneratingProgress(startTime);
   try {
     const body = { prompt, quality: qualitySelect.value, size: sizeSelect.value, n: parseInt(countSelect.value) };
     if (state.imageB64) body.image_b64 = state.imageB64;
     const r = await fetch('/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'Generation failed');
-    state.gallery = [...d.results, ...state.gallery];
+    if (!r.ok) throw new Error(d.error || 'Failed to start generation');
+    const results = await pollJob(d.job_id, startTime);
+    state.gallery = [...results, ...state.gallery];
     renderGallery();
-    toast(`Generated ${d.results.length} image(s)`, 'success');
-  } catch (e) { toast(e.message, 'error'); }
-  finally { state.generating = false; setLoading(generateBtn, false); }
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    toast(`Generated ${results.length} image(s) in ${secs}s`, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+    renderGallery();
+  } finally {
+    state.generating = false;
+    setLoading(generateBtn, false);
+  }
 }
 
 function renderGallery() {

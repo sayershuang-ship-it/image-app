@@ -9,10 +9,13 @@ Usage: OPENAI_API_KEY=... python app.py
 
 import os
 import io
+import re
 import sqlite3
 import base64
 import time
 import json
+import uuid
+import threading
 from datetime import datetime
 from functools import wraps
 
@@ -44,6 +47,20 @@ if not API_KEY and os.path.exists(KEY_FILE):
                 API_KEY = line.strip().split("=", 1)[1].strip('"').strip("'")
                 os.environ["OPENAI_API_KEY"] = API_KEY
                 break
+
+# ── Job Queue (async generation) ──────────────────────────────────────────────
+_jobs: dict = {}          # job_id → {status, results, error, created_at}
+_jobs_lock = threading.Lock()
+JOB_TTL = 3600            # seconds before a finished job is eligible for cleanup
+
+def _cleanup_old_jobs():
+    cutoff = time.time() - JOB_TTL
+    with _jobs_lock:
+        expired = [jid for jid, j in _jobs.items()
+                   if j.get("created_at", 0) < cutoff
+                   and j["status"] in ("done", "failed")]
+        for jid in expired:
+            del _jobs[jid]
 
 # ── Block direct db file access ─────────────────────────────────────────────────
 @app.before_request
@@ -270,93 +287,111 @@ def enhance_prompt():
     except Exception as e:
         return jsonify(error=str(e)), 500
 
-@app.route("/generate", methods=["POST"])
-@api_key_required
-def generate():
-    data       = request.get_json()
-    prompt     = (data.get("prompt") or "").strip()
-    image_b64  = data.get("image_b64") or ""
-    quality    = data.get("quality", "medium")
-    size       = data.get("size", "1024x1024")
-    n          = max(min(int(data.get("n", 1)), 4), 1)
-    negative   = (data.get("negative_prompt") or "").strip()
-    variables  = data.get("variables") or {}  # {name: value} for template substitution
+def _resolve_vars(text: str, variables: dict) -> str:
+    """Substitute {argument name="x" default="y"} placeholders."""
+    def _sub(m):
+        return variables.get(m.group(1), m.group(2) or "")
+    return re.sub(r'\{argument\s+name="([^"]+)"(?:\s+default="([^"]*)")?\s*\}', _sub, text)
 
-    if not prompt:
-        return jsonify(error="Prompt is required"), 400
 
-    # Template variable substitution: {argument name="..." default="..."}
-    import re as _re
-    def _resolve_vars(text):
-        def _sub(m):
-            name = m.group(1)
-            default = m.group(2) or ""
-            return variables.get(name, default)
-        return _re.sub(r'\{argument\s+name="([^"]+)"(?:\s+default="([^"]*)")?\s*\}', _sub, text)
-    prompt = _resolve_vars(prompt)
-    if negative:
-        negative = _resolve_vars(negative)
-        prompt = f"{prompt}\n\nNegative Prompt:\n{negative}"
-
-    # Image size guard: reject oversized uploads before decoding
-    if image_b64 and len(image_b64) > 15 * 1024 * 1024:
-        return jsonify(error="Image too large (max ~10MB raw)"), 413
-
+def _run_generation(job_id: str, prompt: str, image_b64: str,
+                    quality: str, size: str, n: int) -> None:
+    """Run image generation in a background thread and store result in _jobs."""
     try:
         client = get_client()
-        kwargs = dict(
-            model="gpt-image-2",
-            prompt=prompt,
-            n=n,
-            quality=quality,
-            size=size,
-        )
+        kwargs = dict(model="gpt-image-2", prompt=prompt, n=n,
+                      quality=quality, size=size)
 
         if image_b64:
-            # Reference image — convert to RGB PNG (required by gpt-image-2)
             img_bytes = base64.b64decode(image_b64)
             img = Image.open(io.BytesIO(img_bytes))
             if img.mode in ('RGBA', 'P'):
                 img = img.convert('RGB')
-            # Resize if too large
             w, h = img.size
-            max_dim = 2048
-            if w > max_dim or h > max_dim:
-                ratio = min(max_dim / w, max_dim / h)
+            if w > 2048 or h > 2048:
+                ratio = min(2048 / w, 2048 / h)
                 img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
             buf = io.BytesIO()
             img.save(buf, format='PNG')
             buf.seek(0)
             buf.name = 'reference.png'
             kwargs["image"] = buf
-            # images.edit only supports certain sizes + 'auto'
             edit_sizes = {'256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'}
             if size not in edit_sizes:
                 kwargs["size"] = 'auto'
             response = client.images.edit(**kwargs)
         else:
-            # Text-to-image generation
             response = client.images.generate(**kwargs)
 
-    except Exception as e:
+        results = []
+        for item in response.data:
+            if item.url:
+                results.append({"url": item.url, "revised_prompt": item.revised_prompt})
+                save_prompt(prompt, image_b64, item.revised_prompt, quality, size,
+                            "gpt-image-2", item.url, None, True)
+            elif item.b64_json:
+                data_url = f"data:image/png;base64,{item.b64_json}"
+                results.append({"url": data_url, "revised_prompt": item.revised_prompt})
+                save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
+                            item.revised_prompt, quality, size,
+                            "gpt-image-2", None, make_thumbnail(item.b64_json), True)
+
+        with _jobs_lock:
+            _jobs[job_id]["status"] = "done"
+            _jobs[job_id]["results"] = results
+
+    except Exception as exc:
         save_prompt(prompt, image_b64, None, quality, size,
-                    "gpt-image-2", None, None, False, str(e))
-        return jsonify(error=str(e)), 500
+                    "gpt-image-2", None, None, False, str(exc))
+        with _jobs_lock:
+            _jobs[job_id]["status"] = "failed"
+            _jobs[job_id]["error"] = str(exc)
 
-    results = []
-    for img in response.data:
-        if img.url:
-            results.append({"url": img.url, "revised_prompt": img.revised_prompt})
-            save_prompt(prompt, image_b64, img.revised_prompt, quality, size,
-                        "gpt-image-2", img.url, None, True)
-        elif img.b64_json:
-            data_url = f"data:image/png;base64,{img.b64_json}"
-            results.append({"url": data_url, "revised_prompt": img.revised_prompt})
-            save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
-                        img.revised_prompt, quality, size,
-                        "gpt-image-2", None, make_thumbnail(img.b64_json), True)
 
-    return jsonify(results=results)
+@app.route("/generate", methods=["POST"])
+@api_key_required
+def generate():
+    data      = request.get_json()
+    prompt    = (data.get("prompt") or "").strip()
+    image_b64 = data.get("image_b64") or ""
+    quality   = data.get("quality", "medium")
+    size      = data.get("size", "1024x1024")
+    n         = max(min(int(data.get("n", 1)), 4), 1)
+    negative  = (data.get("negative_prompt") or "").strip()
+    variables = data.get("variables") or {}
+
+    if not prompt:
+        return jsonify(error="Prompt is required"), 400
+    if image_b64 and len(image_b64) > 15 * 1024 * 1024:
+        return jsonify(error="Image too large (max ~10MB raw)"), 413
+
+    prompt = _resolve_vars(prompt, variables)
+    if negative:
+        prompt = f"{prompt}\n\nNegative Prompt:\n{_resolve_vars(negative, variables)}"
+
+    _cleanup_old_jobs()
+
+    job_id = uuid.uuid4().hex[:12]
+    with _jobs_lock:
+        _jobs[job_id] = {"status": "running", "created_at": time.time()}
+
+    thread = threading.Thread(
+        target=_run_generation,
+        args=(job_id, prompt, image_b64, quality, size, n),
+        daemon=True,
+    )
+    thread.start()
+
+    return jsonify(job_id=job_id)
+
+
+@app.route("/job-status/<job_id>")
+def job_status(job_id: str):
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+    if not job:
+        return jsonify(error="Job not found"), 404
+    return jsonify(job)
 
 @app.route("/studio")
 def studio():
