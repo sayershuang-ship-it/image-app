@@ -859,11 +859,18 @@ function renderGallery() {
     <div class="gallery-card">
       <img src="${escAttr(img.url)}" alt="Generated image" loading="lazy" />
       <div class="card-overlay">
+        <button class="btn-ghost variation-btn" data-url="${escAttr(img.url)}" data-prompt="${escAttr(img.revised_prompt || '')}" title="Use as reference image">Variation</button>
         <button class="btn-ghost download-btn" data-url="${escAttr(img.url)}" data-idx="${i}">Download</button>
         ${img.revised_prompt ? `<button class="btn-ghost copy-btn" data-prompt="${escAttr(img.revised_prompt)}">Copy Prompt</button>` : ''}
       </div>
     </div>`).join('');
 
+  galleryGrid.querySelectorAll('.variation-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      useAsReference(btn.dataset.url, btn.dataset.prompt);
+    });
+  });
   galleryGrid.querySelectorAll('.download-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -884,6 +891,35 @@ function renderGallery() {
       navigator.clipboard.writeText(btn.dataset.prompt).then(() => toast('Prompt copied', 'success')).catch(() => toast('Failed to copy', 'error'));
     });
   });
+}
+
+async function useAsReference(url, revisedPrompt) {
+  try {
+    let b64;
+    if (url.startsWith('data:')) {
+      b64 = url.split(',')[1];
+    } else {
+      const r = await fetch(url);
+      const blob = await r.blob();
+      b64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result.split(',')[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(blob);
+      });
+    }
+    state.imageB64 = b64;
+    state.imageFile = null;
+    renderUploadPreview();
+    if (revisedPrompt && !promptInput.value.trim()) {
+      promptInput.value = revisedPrompt;
+    }
+    updateButtons();
+    uploadZone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast('Image set as reference — edit prompt and generate', 'success');
+  } catch (_) {
+    toast('Could not load image as reference', 'error');
+  }
 }
 
 function escHtml(s) { const el = document.createElement('span'); el.textContent = s; return el.innerHTML; }
