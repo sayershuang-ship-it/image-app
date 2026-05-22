@@ -138,6 +138,25 @@ body {
   transition: border-color var(--ease);
 }
 .gallery-card:hover { border-color: var(--accent); }
+.gallery-card.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.card-star-badge {
+  position: absolute;
+  top: 8px; right: 8px;
+  color: oklch(75% 0.18 80);
+  font-size: 16px;
+  text-shadow: 0 1px 3px oklch(0% 0 0 / 0.5);
+  pointer-events: none;
+}
+.btn-sm {
+  font-family: var(--font-body);
+  font-size: 12px; font-weight: 510;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted); cursor: pointer;
+  transition: border-color var(--ease), color var(--ease);
+}
+.btn-sm:hover { border-color: var(--fg); color: var(--fg); }
 .gallery-card img {
   width: 100%;
   height: 100%;
@@ -370,9 +389,11 @@ body {
     </div>
     <div class="toolbar-right">
       <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="starred">&#9733; Starred</button>
       <button class="filter-btn" data-filter="today">Today</button>
       <button class="filter-btn" data-filter="week">This Week</button>
       <button class="filter-btn" data-filter="month">This Month</button>
+      <button class="btn-sm" id="export-zip-btn" style="display:none">Export ZIP</button>
     </div>
   </div>
 
@@ -405,9 +426,14 @@ body {
       <span class="label">Generated</span>
       <span class="value" id="modal-date">&mdash;</span>
     </div>
+    <div class="modal-meta-row">
+      <span class="label">Cost</span>
+      <span class="value" id="modal-cost">&mdash;</span>
+    </div>
     <div class="modal-prompt" id="modal-prompt"></div>
     <div class="modal-actions">
       <button class="btn btn-accent" id="modal-download">Download Image</button>
+      <button class="btn btn-outline" id="modal-star">&#9733; Star</button>
       <button class="btn btn-outline" id="modal-copy">Copy Prompt</button>
     </div>
   </div>
@@ -418,7 +444,8 @@ body {
 <script>
 const state = {
   images: [],
-  filter: 'all'
+  filter: 'all',
+  selected: new Set(),
 };
 
 const $ = s => document.querySelector(s);
@@ -455,7 +482,9 @@ async function loadImages() {
         prompt: item.revised_prompt || item.prompt || '',
         quality: item.quality || 'medium',
         size: item.size || '1024x1024',
-        ts: item.prompt_ts || new Date().toISOString()
+        ts: item.prompt_ts || new Date().toISOString(),
+        cost: item.cost_usd || null,
+        starred: !!item.starred,
       }));
   } catch (e) {
     state.images = [];
@@ -467,6 +496,7 @@ async function loadImages() {
 
 function getFilteredImages() {
   const now = Date.now();
+  if (state.filter === 'starred') return state.images.filter(img => img.starred);
   if (state.filter === 'today') {
     const dayStart = new Date(); dayStart.setHours(0,0,0,0);
     return state.images.filter(img => new Date(img.ts) >= dayStart);
@@ -498,8 +528,9 @@ function renderGallery() {
   }
 
   $('#gallery-grid').innerHTML = filtered.map(img => `
-    <div class="gallery-card" data-id="${img.id}">
+    <div class="gallery-card${state.selected.has(img.id) ? ' selected' : ''}" data-id="${img.id}">
       <img src="${getImageSrc(img)}" alt="${escHtml(img.label)}" loading="lazy" onerror="this.parentElement.style.display='none'" />
+      ${img.starred ? '<span class="card-star-badge">&#9733;</span>' : ''}
       <div class="card-overlay">
         <span class="card-meta">${escHtml(img.label)} &middot; ${img.quality}</span>
         <button class="btn-ghost view-btn" data-id="${img.id}">View</button>
@@ -509,15 +540,22 @@ function renderGallery() {
   $('#gallery-grid').querySelectorAll('.gallery-card').forEach(card => {
     card.addEventListener('click', e => {
       if (e.target.closest('.view-btn')) return;
+      if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleSelect(parseInt(card.dataset.id)); return; }
       openDetail(parseInt(card.dataset.id));
     });
   });
   $('#gallery-grid').querySelectorAll('.view-btn').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      openDetail(parseInt(btn.dataset.id));
-    });
+    btn.addEventListener('click', e => { e.stopPropagation(); openDetail(parseInt(btn.dataset.id)); });
   });
+}
+
+function toggleSelect(id) {
+  if (state.selected.has(id)) state.selected.delete(id);
+  else state.selected.add(id);
+  const btn = $('#export-zip-btn');
+  btn.style.display = state.selected.size > 0 ? '' : 'none';
+  btn.textContent = `Export ZIP (${state.selected.size})`;
+  renderGallery();
 }
 
 /* ── Detail Modal ────────────────────────────────── */
@@ -534,7 +572,9 @@ function openDetail(id) {
   $('#modal-quality').textContent = currentDetail.quality;
   $('#modal-size').textContent = currentDetail.size;
   $('#modal-date').textContent = new Date(currentDetail.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  $('#modal-cost').textContent = currentDetail.cost != null ? `$${currentDetail.cost.toFixed(3)}` : '—';
   $('#modal-prompt').textContent = currentDetail.prompt;
+  $('#modal-star').textContent = currentDetail.starred ? '★ Unstar' : '☆ Star';
 
   $('#modal').classList.add('open');
   $('#modal-backdrop').classList.add('open');
@@ -550,18 +590,63 @@ $('#modal-close').addEventListener('click', closeDetail);
 $('#modal-backdrop').addEventListener('click', closeDetail);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
 
-$('#modal-download').addEventListener('click', () => {
+$('#modal-download').addEventListener('click', async () => {
   if (!currentDetail) return;
-  const a = document.createElement('a');
-  a.href = getImageSrc(currentDetail);
-  a.download = `image-${currentDetail.id}.png`;
-  a.click();
-  toast('Download started');
+  try {
+    const r = await fetch(`/save-to-pictures/${currentDetail.id}`, { method: 'POST' });
+    const d = await r.json();
+    if (d.filename) toast(`已儲存：${d.filename}`, 'success');
+    else toast('儲存失敗', 'error');
+  } catch (_) { toast('儲存失敗', 'error'); }
+});
+
+$('#modal-star').addEventListener('click', async () => {
+  if (!currentDetail) return;
+  try {
+    const r = await fetch(`/api/prompts/${currentDetail.id}/star`, { method: 'POST' });
+    const d = await r.json();
+    currentDetail.starred = d.starred;
+    const img = state.images.find(i => i.id === currentDetail.id);
+    if (img) img.starred = d.starred;
+    $('#modal-star').textContent = d.starred ? '★ Unstar' : '☆ Star';
+    renderGallery();
+    toast(d.starred ? 'Starred' : 'Unstarred');
+  } catch (_) { toast('Failed to update star'); }
 });
 
 $('#modal-copy').addEventListener('click', () => {
   if (!currentDetail) return;
   navigator.clipboard.writeText(currentDetail.prompt).then(() => toast('Prompt copied')).catch(() => toast('Failed to copy'));
+});
+
+$('#export-zip-btn').addEventListener('click', async () => {
+  if (!state.selected.size) return;
+  const ids = Array.from(state.selected);
+  const btn = $('#export-zip-btn');
+  try {
+    btn.textContent = 'Preparing…'; btn.disabled = true;
+    const r = await fetch('/export-zip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    if (!r.ok) throw new Error('Export failed');
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `image-studio-export-${Date.now()}.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast(`Exported ${ids.length} image(s)`);
+    state.selected.clear();
+    btn.style.display = 'none';
+    renderGallery();
+  } catch (e) {
+    toast('Export failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    if (state.selected.size) btn.textContent = `Export ZIP (${state.selected.size})`;
+  }
 });
 
 /* ── Filters ─────────────────────────────────────── */

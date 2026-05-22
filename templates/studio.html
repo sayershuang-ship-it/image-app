@@ -458,6 +458,108 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Cost badge ───────────────────────────────────────── */
+.cost-badge {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.cost-badge.accent { color: var(--accent); border-color: var(--accent); }
+
+/* ── Session cost strip ───────────────────────────────── */
+.session-cost {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/* ── Prompt suggestions ───────────────────────────────── */
+.suggestion-box {
+  position: absolute;
+  top: 100%;
+  left: 0; right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 4px;
+  z-index: 50;
+  max-height: 220px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px oklch(0% 0 0 / 0.18);
+}
+.suggestion-item {
+  padding: 9px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.suggestion-item:last-child { border-bottom: none; }
+.suggestion-item:hover { background: var(--border); }
+.suggestion-item .sug-title { font-weight: 500; color: var(--fg); }
+.suggestion-item .sug-cat { font-size: 11px; color: var(--muted); }
+.prompt-area { position: relative; }
+
+/* ── Batch mode ───────────────────────────────────────── */
+.batch-area { display: none; flex-direction: column; gap: 8px; }
+.batch-area.visible { display: flex; }
+.batch-area textarea {
+  min-height: 100px;
+  font-size: 13px;
+  resize: vertical;
+}
+.batch-hint { font-size: 11px; color: var(--muted); }
+.mode-toggle {
+  display: flex; gap: 4px;
+}
+.mode-btn {
+  flex: 1;
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.mode-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Gallery card star & tag ──────────────────────────── */
+.card-star {
+  position: absolute;
+  top: 8px; left: 8px;
+  font-size: 18px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--ease);
+  background: none;
+  border: none;
+  padding: 2px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px oklch(0% 0 0 / 0.5));
+}
+.gallery-card:hover .card-star { opacity: 1; }
+.card-star.starred { opacity: 1; }
+
+/* ── Batch progress list ──────────────────────────────── */
+.batch-progress { grid-column: 1/-1; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.batch-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.batch-item .bp-status { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; }
+.batch-item .bp-status.running { border: 2px solid var(--border); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+.batch-item .bp-status.done { background: oklch(62% 0.14 150); }
+.batch-item .bp-status.failed { background: oklch(55% 0.17 25); }
+.batch-item .bp-prompt { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ── Responsive ───────────────────────────────────────── */
 @media (max-width: 860px) {
   .workspace { flex-direction: column; }
@@ -505,9 +607,21 @@ body {
       </div>
       <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" style="display:none" />
 
-      <div class="prompt-area">
+      <div class="mode-toggle" style="margin-bottom:4px">
+        <button class="mode-btn active" id="mode-single">Single</button>
+        <button class="mode-btn" id="mode-batch">Batch</button>
+      </div>
+
+      <div class="prompt-area" id="single-area">
         <label for="prompt-input">Prompt</label>
         <textarea id="prompt-input" placeholder="Describe the image you want to create..."></textarea>
+        <div class="suggestion-box" id="suggestion-box" style="display:none"></div>
+      </div>
+
+      <div class="batch-area" id="batch-area">
+        <label for="batch-input">Batch Prompts</label>
+        <textarea id="batch-input" placeholder="One prompt per line&#10;a sunset over mountains&#10;a futuristic city in rain&#10;a cat in samurai armor"></textarea>
+        <span class="batch-hint">Each line = one image (max 20)</span>
       </div>
 
       <div class="controls">
@@ -531,7 +645,7 @@ body {
               <option value="2048x2048" data-high="true">2048×2048 (1:1 HQ)</option>
             </select>
           </div>
-          <div class="control-group">
+          <div class="control-group" id="count-group">
             <label for="count-select">Count</label>
             <select id="count-select">
               <option value="1" selected>1</option>
@@ -541,9 +655,10 @@ body {
             </select>
           </div>
         </div>
-        <div class="btn-row">
+        <div class="btn-row" style="align-items:center;gap:8px">
           <button class="btn btn-secondary" id="enhance-btn" disabled>Translate &amp; Enhance</button>
           <button class="btn btn-primary" id="generate-btn" disabled>Generate</button>
+          <span class="cost-badge" id="cost-badge">~$0.042</span>
         </div>
       </div>
     </section>
@@ -551,7 +666,7 @@ body {
     <section class="panel-right">
       <div class="gallery-header">
         <h2 id="gallery-heading">Session Results</h2>
-        <span style="font-size:11px;color:var(--muted)" id="gallery-sub">Cmd+Enter to generate</span>
+        <span class="session-cost" id="gallery-sub">Cmd+Enter to generate</span>
       </div>
       <div class="gallery-grid" id="gallery-grid">
         <div class="gallery-empty">
@@ -573,22 +688,33 @@ const state = {
   gallery: [],
   generating: false,
   enhancing: false,
-  theme: 'dark'
+  theme: 'dark',
+  mode: 'single',       // 'single' | 'batch'
+  sessionCost: 0,
+  starredIds: new Set(),
 };
 
 const $ = (sel) => document.querySelector(sel);
 
-const uploadZone = $('#upload-zone');
-const fileInput = $('#file-input');
-const promptInput = $('#prompt-input');
-const enhanceBtn = $('#enhance-btn');
-const generateBtn = $('#generate-btn');
-const qualitySelect = $('#quality-select');
-const sizeSelect = $('#size-select');
-const countSelect = $('#count-select');
-const galleryGrid = $('#gallery-grid');
+const uploadZone     = $('#upload-zone');
+const fileInput      = $('#file-input');
+const promptInput    = $('#prompt-input');
+const enhanceBtn     = $('#enhance-btn');
+const generateBtn    = $('#generate-btn');
+const qualitySelect  = $('#quality-select');
+const sizeSelect     = $('#size-select');
+const countSelect    = $('#count-select');
+const galleryGrid    = $('#gallery-grid');
 const galleryHeading = $('#gallery-heading');
-const gallerySub = $('#gallery-sub');
+const gallerySub     = $('#gallery-sub');
+const costBadge      = $('#cost-badge');
+const suggestionBox  = $('#suggestion-box');
+const batchInput     = $('#batch-input');
+const modeSingle     = $('#mode-single');
+const modeBatch      = $('#mode-batch');
+const singleArea     = $('#single-area');
+const batchArea      = $('#batch-area');
+const countGroup     = $('#count-group');
 const apiBadge = $('#api-badge');
 const toastContainer = $('#toast-container');
 const themeToggle = $('#theme-toggle');
@@ -598,7 +724,87 @@ async function init() {
   loadTheme();
   await checkHealth();
   updateButtons();
+  updateCostBadge();
   checkRestore();
+  loadStats();
+}
+
+// ── Mode toggle ─────────────────────────────────────────
+modeSingle.addEventListener('click', () => setMode('single'));
+modeBatch.addEventListener('click', () => setMode('batch'));
+function setMode(m) {
+  state.mode = m;
+  modeSingle.classList.toggle('active', m === 'single');
+  modeBatch.classList.toggle('active', m === 'batch');
+  singleArea.style.display = m === 'single' ? '' : 'none';
+  batchArea.classList.toggle('visible', m === 'batch');
+  countGroup.style.display = m === 'batch' ? 'none' : '';
+  suggestionBox.style.display = 'none';
+  updateButtons();
+}
+
+// ── Cost badge ──────────────────────────────────────────
+const COST_TABLE = {
+  low:    {'1024x1024':0.011,'1024x1792':0.016,'1792x1024':0.016},
+  medium: {'1024x1024':0.042,'1024x1792':0.063,'1792x1024':0.063},
+  high:   {'1024x1024':0.167,'1024x1792':0.250,'1792x1024':0.250,'2048x2048':0.167},
+};
+function calcCost(quality, size, n) {
+  return ((COST_TABLE[quality] || {})[size] || 0.042) * n;
+}
+function updateCostBadge() {
+  if (state.mode === 'batch') {
+    const lines = (batchInput.value || '').split('\n').filter(l => l.trim()).length;
+    const c = calcCost(qualitySelect.value, sizeSelect.value, Math.max(lines, 1));
+    costBadge.textContent = `~$${c.toFixed(3)} (${lines} prompts)`;
+  } else {
+    const c = calcCost(qualitySelect.value, sizeSelect.value, parseInt(countSelect.value) || 1);
+    costBadge.textContent = `~$${c.toFixed(3)}`;
+  }
+}
+qualitySelect.addEventListener('change', updateCostBadge);
+sizeSelect.addEventListener('change', updateCostBadge);
+countSelect.addEventListener('change', updateCostBadge);
+batchInput.addEventListener('input', updateCostBadge);
+
+// ── Session stats ───────────────────────────────────────
+async function loadStats() {
+  try {
+    const d = await fetch('/api/stats').then(r => r.json());
+    gallerySub.textContent = `Total spend: $${(d.total_cost || 0).toFixed(3)} • ${d.successes || 0} images`;
+  } catch (_) {}
+}
+
+// ── FTS Prompt suggestions ──────────────────────────────
+let _sugTimer = null;
+promptInput.addEventListener('input', () => {
+  updateButtons();
+  clearTimeout(_sugTimer);
+  const q = promptInput.value.trim();
+  if (q.length < 3 || state.mode === 'batch') { suggestionBox.style.display = 'none'; return; }
+  _sugTimer = setTimeout(() => fetchSuggestions(q), 350);
+});
+promptInput.addEventListener('blur', () => {
+  setTimeout(() => { suggestionBox.style.display = 'none'; }, 200);
+});
+async function fetchSuggestions(q) {
+  try {
+    const d = await fetch(`/api/search-prompts?q=${encodeURIComponent(q)}&limit=6`).then(r => r.json());
+    if (!d.results || !d.results.length) { suggestionBox.style.display = 'none'; return; }
+    suggestionBox.innerHTML = d.results.map(r => `
+      <div class="suggestion-item" data-prompt="${escAttr(r.prompt)}">
+        <span class="sug-title">${escHtml(r.title)}</span>
+        <span class="sug-cat">${escHtml(r.category || '')}</span>
+      </div>`).join('');
+    suggestionBox.querySelectorAll('.suggestion-item').forEach(el => {
+      el.addEventListener('mousedown', () => {
+        promptInput.value = el.dataset.prompt;
+        suggestionBox.style.display = 'none';
+        updateButtons(); updateCostBadge();
+      });
+    });
+    suggestionBox.style.display = '';
+  } catch (_) { suggestionBox.style.display = 'none'; }
 }
 
 function loadTheme() {
@@ -672,9 +878,15 @@ function toast(msg, type) {
 function updateButtons() {
   const hasPrompt = promptInput.value.trim().length > 0;
   const hasImage = state.imageB64.length > 0;
-  const canAct = (hasPrompt || hasImage) && !state.generating && !state.enhancing;
-  enhanceBtn.disabled = !canAct;
-  generateBtn.disabled = !hasPrompt || state.generating || state.enhancing;
+  const busy = state.generating || state.enhancing;
+  if (state.mode === 'batch') {
+    const hasBatch = (batchInput.value || '').split('\n').some(l => l.trim());
+    enhanceBtn.disabled = true;
+    generateBtn.disabled = !hasBatch || busy;
+  } else {
+    enhanceBtn.disabled = !(hasPrompt || hasImage) || busy;
+    generateBtn.disabled = !hasPrompt || busy;
+  }
 }
 
 function setLoading(btn, spinner) {
@@ -766,7 +978,7 @@ qualitySelect.addEventListener('change', () => {
 promptInput.addEventListener('input', updateButtons);
 
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!generateBtn.disabled) doGenerate(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!generateBtn.disabled) state.mode === 'batch' ? doBatchGenerate() : doGenerate(); }
 });
 
 enhanceBtn.addEventListener('click', doEnhance);
@@ -784,7 +996,8 @@ async function doEnhance() {
   finally { state.enhancing = false; setLoading(enhanceBtn, false); }
 }
 
-generateBtn.addEventListener('click', doGenerate);
+generateBtn.addEventListener('click', () => state.mode === 'batch' ? doBatchGenerate() : doGenerate());
+batchInput.addEventListener('input', updateButtons);
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -833,10 +1046,76 @@ async function doGenerate() {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Failed to start generation');
     const results = await pollJob(d.job_id, startTime);
+    const cost = results.reduce((s, x) => s + (x.cost_usd || 0), 0);
+    state.sessionCost += cost;
     state.gallery = [...results, ...state.gallery];
     renderGallery();
     const secs = Math.floor((Date.now() - startTime) / 1000);
-    toast(`Generated ${results.length} image(s) in ${secs}s`, 'success');
+    toast(`Generated ${results.length} image(s) in ${secs}s — $${cost.toFixed(3)}`, 'success');
+    gallerySub.textContent = `Session: $${state.sessionCost.toFixed(3)}`;
+    gallerySub.style.display = '';
+  } catch (e) {
+    toast(e.message, 'error');
+    renderGallery();
+  } finally {
+    state.generating = false;
+    setLoading(generateBtn, false);
+  }
+}
+
+async function doBatchGenerate() {
+  const prompts = (batchInput.value || '').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 20);
+  if (!prompts.length) return;
+  state.generating = true;
+  setLoading(generateBtn, true);
+  updateButtons();
+  const quality = qualitySelect.value;
+  const size = sizeSelect.value;
+  const startTime = Date.now();
+
+  // Show batch progress placeholder in gallery
+  galleryHeading.textContent = 'Batch Generating…';
+  gallerySub.style.display = 'none';
+  galleryGrid.innerHTML = prompts.map((p, i) => `
+    <div class="batch-item" id="batch-item-${i}">
+      <div class="batch-progress">
+        <div class="gen-spinner" style="width:20px;height:20px;border-width:2px"></div>
+        <span class="batch-item-prompt">${escHtml(p.slice(0, 60))}${p.length > 60 ? '…' : ''}</span>
+      </div>
+    </div>`).join('');
+
+  try {
+    const r = await fetch('/batch-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompts, quality, size })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Batch failed to start');
+
+    // Poll each job concurrently, update UI as each finishes
+    const results = [];
+    await Promise.all(d.jobs.map(async ({ job_id }, i) => {
+      try {
+        const imgs = await pollJob(job_id, startTime);
+        results.push(...imgs);
+        state.sessionCost += imgs.reduce((s, x) => s + (x.cost_usd || 0), 0);
+        const slot = document.getElementById(`batch-item-${i}`);
+        if (slot && imgs[0]) {
+          slot.innerHTML = `<img src="${escAttr(imgs[0].url)}" alt="" style="width:100%;border-radius:var(--radius)" />`;
+        }
+      } catch (err) {
+        const slot = document.getElementById(`batch-item-${i}`);
+        if (slot) slot.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:8px">Failed: ${escHtml(err.message)}</div>`;
+      }
+    }));
+
+    state.gallery = [...results, ...state.gallery];
+    renderGallery();
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    toast(`Batch done: ${results.length}/${prompts.length} images in ${secs}s — $${state.sessionCost.toFixed(3)} total`, 'success');
+    gallerySub.textContent = `Session: $${state.sessionCost.toFixed(3)}`;
+    gallerySub.style.display = '';
   } catch (e) {
     toast(e.message, 'error');
     renderGallery();
@@ -854,35 +1133,46 @@ function renderGallery() {
     return;
   }
   galleryHeading.textContent = 'Session Results';
-  gallerySub.style.display = 'none';
-  galleryGrid.innerHTML = state.gallery.map((img, i) => `
+  galleryGrid.innerHTML = state.gallery.map((img, i) => {
+    const starred = img.pid && state.starredIds.has(img.pid);
+    return `
     <div class="gallery-card">
       <img src="${escAttr(img.url)}" alt="Generated image" loading="lazy" />
+      ${img.pid ? `<button class="card-star${starred ? ' starred' : ''}" data-pid="${img.pid}" title="Star">★</button>` : ''}
       <div class="card-overlay">
         <button class="btn-ghost variation-btn" data-url="${escAttr(img.url)}" data-prompt="${escAttr(img.revised_prompt || '')}" title="Use as reference image">Variation</button>
-        <button class="btn-ghost download-btn" data-url="${escAttr(img.url)}" data-idx="${i}">Download</button>
+        <button class="btn-ghost download-btn" data-url="${escAttr(img.url)}" data-pid="${img.pid || ''}" data-prompt="${escAttr(img.revised_prompt || '')}">Download</button>
         ${img.revised_prompt ? `<button class="btn-ghost copy-btn" data-prompt="${escAttr(img.revised_prompt)}">Copy Prompt</button>` : ''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
+  galleryGrid.querySelectorAll('.card-star').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); toggleStar(parseInt(btn.dataset.pid), btn); });
+  });
   galleryGrid.querySelectorAll('.variation-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      useAsReference(btn.dataset.url, btn.dataset.prompt);
-    });
+    btn.addEventListener('click', (e) => { e.stopPropagation(); useAsReference(btn.dataset.url, btn.dataset.prompt); });
   });
   galleryGrid.querySelectorAll('.download-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const url = btn.dataset.url;
-      if (url.startsWith('data:')) { const a = document.createElement('a'); a.href = url; a.download = 'image.png'; a.click(); }
-      else {
-        try {
-          const r = await fetch(url); const blob = await r.blob();
-          const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'image.png'; a.click();
-          URL.revokeObjectURL(a.href);
-        } catch (_) { window.open(url, '_blank'); }
-      }
+      try {
+        const pid = btn.dataset.pid;
+        if (pid) {
+          const r = await fetch(`/save-to-pictures/${pid}`, { method: 'POST' });
+          const d = await r.json();
+          if (d.filename) { toast(`已儲存：${d.filename}`, 'success'); return; }
+        }
+        // fallback: no pid, send data_url + prompt
+        const r = await fetch('/save-to-pictures', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data_url: btn.dataset.url, prompt: btn.dataset.prompt })
+        });
+        const d = await r.json();
+        if (d.filename) toast(`已儲存：${d.filename}`, 'success');
+        else toast('儲存失敗', 'error');
+      } catch (_) { toast('儲存失敗', 'error'); }
     });
   });
   galleryGrid.querySelectorAll('.copy-btn').forEach(btn => {
@@ -891,6 +1181,15 @@ function renderGallery() {
       navigator.clipboard.writeText(btn.dataset.prompt).then(() => toast('Prompt copied', 'success')).catch(() => toast('Failed to copy', 'error'));
     });
   });
+}
+
+async function toggleStar(pid, btn) {
+  try {
+    const r = await fetch(`/api/prompts/${pid}/star`, { method: 'POST' });
+    const d = await r.json();
+    if (d.starred) { state.starredIds.add(pid); btn.classList.add('starred'); }
+    else { state.starredIds.delete(pid); btn.classList.remove('starred'); }
+  } catch (_) { toast('Failed to update star', 'error'); }
 }
 
 async function useAsReference(url, revisedPrompt) {

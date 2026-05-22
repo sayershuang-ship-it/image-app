@@ -235,6 +235,17 @@ body {
 }
 .icon-btn:hover { border-color: var(--fg); color: var(--fg); }
 .icon-btn.danger:hover { border-color: oklch(55% 0.17 25); color: oklch(55% 0.17 25); }
+.icon-btn.star-btn { font-size: 16px; color: var(--border); }
+.icon-btn.star-btn.starred { color: oklch(75% 0.18 80); border-color: oklch(75% 0.18 80 / 0.4); }
+.cost-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: oklch(58% 0.12 160);
+  background: oklch(58% 0.12 160 / 0.08);
+  padding: 2px 7px;
+  letter-spacing: 0.02em;
+}
+.history-item.selected { background: oklch(from var(--accent) l c h / 0.06); border-color: var(--accent); }
 
 .history-empty {
   text-align: center;
@@ -441,6 +452,7 @@ body {
       <span class="search-icon">&#x2315;</span>
     </div>
     <div class="toolbar-actions">
+      <button class="btn-sm" id="export-zip-btn" style="display:none">Export ZIP</button>
       <button class="btn-sm danger" id="clear-all-btn">Clear All</button>
     </div>
   </div>
@@ -462,12 +474,16 @@ body {
     <button class="sidebar-close" id="sidebar-close">&times;</button>
   </div>
   <div class="sidebar-body">
-    <div>
+    <div id="detail-original-section" style="display:none">
       <div class="sidebar-label">Original Prompt</div>
+      <p class="sidebar-revised" id="detail-original"></p>
+    </div>
+    <div>
+      <div class="sidebar-label">Enhanced Prompt</div>
       <p class="sidebar-prompt" id="detail-prompt"></p>
     </div>
     <div>
-      <div class="sidebar-label">Revised Prompt</div>
+      <div class="sidebar-label">Revised by Model</div>
       <p class="sidebar-revised" id="detail-revised"></p>
     </div>
     <div class="sidebar-meta-grid">
@@ -480,8 +496,8 @@ body {
         <div class="value" id="detail-size">&mdash;</div>
       </div>
       <div class="sidebar-meta-item">
-        <div class="label">Count</div>
-        <div class="value" id="detail-count">&mdash;</div>
+        <div class="label">Cost</div>
+        <div class="value" id="detail-cost">&mdash;</div>
       </div>
       <div class="sidebar-meta-item">
         <div class="label">Status</div>
@@ -506,7 +522,8 @@ body {
 const state = {
   entries: [],
   search: '',
-  detailId: null
+  detailId: null,
+  selected: new Set(),  // selected entry ids for ZIP export
 };
 
 const $ = s => document.querySelector(s);
@@ -535,6 +552,7 @@ async function loadHistory() {
     state.entries = data.map(item => ({
       id: item.id,
       prompt: item.prompt || '',
+      originalPrompt: item.original_prompt || null,
       revised: item.revised_prompt || null,
       quality: item.quality || 'medium',
       size: item.size || '1024x1024',
@@ -542,7 +560,10 @@ async function loadHistory() {
       hasImage: !!item.has_image,
       success: item.success !== 0,
       error: item.error_msg || '',
-      ts: item.prompt_ts || new Date().toISOString()
+      ts: item.prompt_ts || new Date().toISOString(),
+      cost: item.cost_usd || null,
+      starred: !!item.starred,
+      tags: item.tags || '',
     }));
   } catch (e) {
     state.entries = [];
@@ -575,19 +596,23 @@ function renderHistory() {
     const dateStr = ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const thumbColor = ['oklch(62% 0.14 25)','oklch(55% 0.12 200)','oklch(50% 0.10 160)','oklch(65% 0.15 50)','oklch(58% 0.13 290)','oklch(52% 0.11 320)','oklch(60% 0.14 100)','oklch(48% 0.08 180)'][e.id % 8];
     const thumb = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="${thumbColor}"/><circle cx="32" cy="24" r="10" fill="oklch(100% 0 0 / 0.2)"/><rect x="18" y="38" width="28" height="12" rx="2" fill="oklch(0% 0 0 / 0.12)"/></svg>`;
+    const sel = state.selected.has(e.id);
 
-    return `<div class="history-item" data-id="${e.id}">
-      <div class="history-thumb">${thumb}</div>
+    return `<div class="history-item${sel ? ' selected' : ''}" data-id="${e.id}">
+      <div class="history-thumb" style="cursor:pointer" title="Click to select for export">${thumb}</div>
       <div class="history-body">
         <div class="history-prompt">${escHtml(e.prompt)}</div>
         <div class="history-meta">
           <span>${dateStr}</span>
           <span>${e.quality} &middot; ${e.size}</span>
+          ${e.cost != null ? `<span class="cost-chip">$${e.cost.toFixed(3)}</span>` : ''}
           ${e.hasImage ? '<span class="ref-tag">+reference</span>' : ''}
           <span class="status-badge ${e.success ? 'ok' : 'fail'}">${e.success ? 'ok' : 'fail'}</span>
+          ${e.tags ? `<span style="color:var(--accent);font-size:11px">${escHtml(e.tags)}</span>` : ''}
         </div>
       </div>
       <div class="history-actions">
+        <button class="icon-btn star-btn${e.starred ? ' starred' : ''}" data-id="${e.id}" title="Star">&#9733;</button>
         <button class="icon-btn restore-btn" data-id="${e.id}" title="Restore">&olarr;</button>
         <button class="icon-btn danger delete-btn" data-id="${e.id}" title="Delete">&times;</button>
       </div>
@@ -595,25 +620,46 @@ function renderHistory() {
   }).join('');
 
   $('#history-list').querySelectorAll('.history-item').forEach(el => {
-    el.addEventListener('click', function(e) {
-      if (e.target.closest('.restore-btn') || e.target.closest('.delete-btn')) return;
+    el.addEventListener('click', function(ev) {
+      if (ev.target.closest('.restore-btn') || ev.target.closest('.delete-btn') || ev.target.closest('.star-btn')) return;
+      if (ev.target.closest('.history-thumb')) {
+        toggleSelect(parseInt(this.dataset.id));
+        return;
+      }
       openDetail(parseInt(this.dataset.id));
     });
   });
 
+  $('#history-list').querySelectorAll('.star-btn').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); toggleStarEntry(parseInt(btn.dataset.id), btn); });
+  });
+
   $('#history-list').querySelectorAll('.restore-btn').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      restoreEntry(parseInt(btn.dataset.id));
-    });
+    btn.addEventListener('click', e => { e.stopPropagation(); restoreEntry(parseInt(btn.dataset.id)); });
   });
 
   $('#history-list').querySelectorAll('.delete-btn').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      deleteEntry(parseInt(btn.dataset.id));
-    });
+    btn.addEventListener('click', e => { e.stopPropagation(); deleteEntry(parseInt(btn.dataset.id)); });
   });
+}
+
+function toggleSelect(id) {
+  if (state.selected.has(id)) state.selected.delete(id);
+  else state.selected.add(id);
+  $('#export-zip-btn').style.display = state.selected.size > 0 ? '' : 'none';
+  $('#export-zip-btn').textContent = `Export ZIP (${state.selected.size})`;
+  renderHistory();
+}
+
+async function toggleStarEntry(id, btn) {
+  try {
+    const r = await fetch(`/api/prompts/${id}/star`, { method: 'POST' });
+    const d = await r.json();
+    const entry = state.entries.find(e => e.id === id);
+    if (entry) entry.starred = d.starred;
+    btn.classList.toggle('starred', d.starred);
+    toast(d.starred ? 'Starred' : 'Unstarred');
+  } catch (_) { toast('Failed to update star'); }
 }
 
 /* ── Detail Sidebar ──────────────────────────────── */
@@ -623,12 +669,20 @@ function openDetail(id) {
   if (!entry) return;
   state.detailId = id;
 
+  // Show original prompt if it differs from the (possibly enhanced) prompt
+  const showOriginal = entry.originalPrompt && entry.originalPrompt !== entry.prompt;
   $('#detail-prompt').textContent = entry.prompt;
+  const origSection = $('#detail-original-section');
+  if (origSection) {
+    origSection.style.display = showOriginal ? '' : 'none';
+    if (showOriginal) $('#detail-original').textContent = entry.originalPrompt;
+  }
   $('#detail-revised').textContent = entry.revised || '(no revised prompt)';
   $('#detail-quality').textContent = entry.quality;
   $('#detail-size').textContent = entry.size;
-  $('#detail-count').textContent = entry.n;
   $('#detail-status').textContent = entry.success ? 'Success' : 'Failed';
+  const costEl = $('#detail-cost');
+  if (costEl) costEl.textContent = entry.cost != null ? `$${entry.cost.toFixed(3)}` : '—';
   $('#detail-ts').textContent = new Date(entry.ts).toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit', second: '2-digit'
@@ -696,6 +750,38 @@ async function deleteEntry(id) {
     toast('Delete failed');
   }
 }
+
+$('#export-zip-btn').addEventListener('click', async () => {
+  if (!state.selected.size) return;
+  const ids = Array.from(state.selected);
+  try {
+    $('#export-zip-btn').textContent = 'Preparing…';
+    $('#export-zip-btn').disabled = true;
+    const r = await fetch('/export-zip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    if (!r.ok) throw new Error('Export failed');
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `image-studio-export-${Date.now()}.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast(`Exported ${ids.length} image(s)`);
+    state.selected.clear();
+    renderHistory();
+    $('#export-zip-btn').style.display = 'none';
+  } catch (e) {
+    toast('Export failed: ' + e.message);
+  } finally {
+    $('#export-zip-btn').disabled = false;
+    if (state.selected.size) {
+      $('#export-zip-btn').textContent = `Export ZIP (${state.selected.size})`;
+    }
+  }
+});
 
 $('#clear-all-btn').addEventListener('click', async () => {
   if (state.entries.length === 0) return;

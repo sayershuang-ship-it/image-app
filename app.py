@@ -73,19 +73,42 @@ def init_db():
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS prompts (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                prompt      TEXT    NOT NULL,
-                image_b64   TEXT,
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                prompt         TEXT    NOT NULL,
+                original_prompt TEXT,
+                image_b64      TEXT,
                 revised_prompt TEXT,
-                quality     TEXT,
-                size        TEXT,
-                model       TEXT,
-                prompt_ts   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                result_url  TEXT,
-                result_b64  TEXT,
-                success     INTEGER DEFAULT 1,
-                error_msg   TEXT
+                quality        TEXT,
+                size           TEXT,
+                model          TEXT,
+                prompt_ts      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                result_url     TEXT,
+                result_b64     TEXT,
+                success        INTEGER DEFAULT 1,
+                error_msg      TEXT,
+                cost_usd       REAL,
+                starred        INTEGER DEFAULT 0,
+                tags           TEXT
             )
+        """)
+        # Migrate existing tables: add new columns if absent
+        existing = {r[1] for r in conn.execute("PRAGMA table_info(prompts)").fetchall()}
+        for col, definition in [
+            ("original_prompt", "TEXT"),
+            ("cost_usd",        "REAL"),
+            ("starred",         "INTEGER DEFAULT 0"),
+            ("tags",            "TEXT"),
+        ]:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE prompts ADD COLUMN {col} {definition}")
+        # FTS index for community_prompts
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS community_prompts_fts
+            USING fts5(title, prompt, category, content='community_prompts', content_rowid='id')
+        """)
+        conn.execute("""
+            INSERT OR IGNORE INTO community_prompts_fts(rowid, title, prompt, category)
+            SELECT id, title, prompt, category FROM community_prompts
         """)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -122,16 +145,29 @@ def api_key_required(f):
         return f(*args, **kwargs)
     return decorated
 
+# gpt-image-2 pricing per image (USD, as of mid-2025)
+_COST_TABLE = {
+    "low":    {"1024x1024": 0.011, "1024x1792": 0.016, "1792x1024": 0.016},
+    "medium": {"1024x1024": 0.042, "1024x1792": 0.063, "1792x1024": 0.063},
+    "high":   {"1024x1024": 0.167, "1024x1792": 0.250, "1792x1024": 0.250,
+               "2048x2048": 0.167},
+}
+
+def calc_cost(quality: str, size: str, n: int = 1) -> float:
+    return round(_COST_TABLE.get(quality, {}).get(size, 0.042) * n, 4)
+
 def save_prompt(prompt, image_b64, revised, quality, size, model,
-                result_url, result_b64, success, error_msg=""):
+                result_url, result_b64, success, error_msg="",
+                original_prompt=None, cost_usd=None) -> int:
     with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
+        cur = conn.execute("""
             INSERT INTO prompts
-                (prompt, image_b64, revised_prompt, quality, size, model,
-                 result_url, result_b64, success, error_msg)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        """, (prompt, image_b64 or None, revised, quality, size, model,
-              result_url, result_b64, int(success), error_msg))
+                (prompt, original_prompt, image_b64, revised_prompt, quality, size, model,
+                 result_url, result_b64, success, error_msg, cost_usd)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (prompt, original_prompt, image_b64 or None, revised, quality, size, model,
+              result_url, result_b64, int(success), error_msg, cost_usd))
+        return cur.lastrowid
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
@@ -143,10 +179,11 @@ def history():
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("""
-            SELECT id, prompt, revised_prompt, quality, size, model,
-                   prompt_ts, result_url, success, error_msg,
+            SELECT id, prompt, original_prompt, revised_prompt, quality, size, model,
+                   prompt_ts, result_url, success, error_msg, cost_usd,
+                   COALESCE(starred, 0) as starred, tags,
                    CASE WHEN image_b64 IS NOT NULL THEN 1 ELSE 0 END as has_image
-            FROM prompts ORDER BY id DESC LIMIT 100
+            FROM prompts ORDER BY id DESC LIMIT 200
         """).fetchall()
     return jsonify([dict(r) for r in rows])
 
@@ -295,7 +332,8 @@ def _resolve_vars(text: str, variables: dict) -> str:
 
 
 def _run_generation(job_id: str, prompt: str, image_b64: str,
-                    quality: str, size: str, n: int) -> None:
+                    quality: str, size: str, n: int,
+                    original_prompt: str = "") -> None:
     """Run image generation in a background thread and store result in _jobs."""
     try:
         client = get_client()
@@ -323,18 +361,31 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
         else:
             response = client.images.generate(**kwargs)
 
+        cost = calc_cost(quality, size, n)
         results = []
         for item in response.data:
             if item.url:
-                results.append({"url": item.url, "revised_prompt": item.revised_prompt})
-                save_prompt(prompt, image_b64, item.revised_prompt, quality, size,
-                            "gpt-image-2", item.url, None, True)
+                # Download immediately so the image survives URL expiry
+                try:
+                    import urllib.request
+                    with urllib.request.urlopen(item.url) as resp:
+                        raw_b64 = base64.b64encode(resp.read()).decode()
+                except Exception:
+                    raw_b64 = None
+                data_url = f"data:image/png;base64,{raw_b64}" if raw_b64 else item.url
+                pid = save_prompt(prompt, image_b64, item.revised_prompt, quality, size,
+                                  "gpt-image-2", item.url, raw_b64, True,
+                                  original_prompt=original_prompt or None, cost_usd=cost)
+                results.append({"url": data_url, "revised_prompt": item.revised_prompt,
+                                 "cost_usd": cost, "pid": pid})
             elif item.b64_json:
                 data_url = f"data:image/png;base64,{item.b64_json}"
-                results.append({"url": data_url, "revised_prompt": item.revised_prompt})
-                save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
-                            item.revised_prompt, quality, size,
-                            "gpt-image-2", None, make_thumbnail(item.b64_json), True)
+                pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
+                                  item.revised_prompt, quality, size,
+                                  "gpt-image-2", None, item.b64_json, True,
+                                  original_prompt=original_prompt or None, cost_usd=cost)
+                results.append({"url": data_url, "revised_prompt": item.revised_prompt,
+                                 "cost_usd": cost, "pid": pid})
 
         with _jobs_lock:
             _jobs[job_id]["status"] = "done"
@@ -351,14 +402,15 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
 @app.route("/generate", methods=["POST"])
 @api_key_required
 def generate():
-    data      = request.get_json()
-    prompt    = (data.get("prompt") or "").strip()
-    image_b64 = data.get("image_b64") or ""
-    quality   = data.get("quality", "medium")
-    size      = data.get("size", "1024x1024")
-    n         = max(min(int(data.get("n", 1)), 4), 1)
-    negative  = (data.get("negative_prompt") or "").strip()
-    variables = data.get("variables") or {}
+    data             = request.get_json()
+    original_prompt  = (data.get("prompt") or "").strip()
+    prompt           = original_prompt
+    image_b64        = data.get("image_b64") or ""
+    quality          = data.get("quality", "medium")
+    size             = data.get("size", "1024x1024")
+    n                = max(min(int(data.get("n", 1)), 4), 1)
+    negative         = (data.get("negative_prompt") or "").strip()
+    variables        = data.get("variables") or {}
 
     if not prompt:
         return jsonify(error="Prompt is required"), 400
@@ -369,20 +421,22 @@ def generate():
     if negative:
         prompt = f"{prompt}\n\nNegative Prompt:\n{_resolve_vars(negative, variables)}"
 
+    estimated_cost = calc_cost(quality, size, n)
     _cleanup_old_jobs()
 
     job_id = uuid.uuid4().hex[:12]
     with _jobs_lock:
-        _jobs[job_id] = {"status": "running", "created_at": time.time()}
+        _jobs[job_id] = {"status": "running", "created_at": time.time(),
+                         "estimated_cost": estimated_cost}
 
     thread = threading.Thread(
         target=_run_generation,
-        args=(job_id, prompt, image_b64, quality, size, n),
+        args=(job_id, prompt, image_b64, quality, size, n, original_prompt),
         daemon=True,
     )
     thread.start()
 
-    return jsonify(job_id=job_id)
+    return jsonify(job_id=job_id, estimated_cost=estimated_cost)
 
 
 @app.route("/job-status/<job_id>")
@@ -392,6 +446,165 @@ def job_status(job_id: str):
     if not job:
         return jsonify(error="Job not found"), 404
     return jsonify(job)
+
+
+# ── Stats & cost summary ──────────────────────────────────────────────────────
+@app.route("/api/stats")
+def api_stats():
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute("""
+            SELECT COUNT(*) as total,
+                   SUM(CASE WHEN success=1 THEN 1 ELSE 0 END) as successes,
+                   ROUND(SUM(COALESCE(cost_usd,0)),4) as total_cost,
+                   SUM(starred) as starred_count
+            FROM prompts
+        """).fetchone()
+    return jsonify(total=row[0], successes=row[1],
+                   total_cost=row[2] or 0, starred_count=row[3] or 0)
+
+
+# ── Tag & star endpoints ──────────────────────────────────────────────────────
+@app.route("/api/prompts/<int:pid>/star", methods=["POST"])
+def toggle_star(pid):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("UPDATE prompts SET starred = 1 - COALESCE(starred,0) WHERE id=?", (pid,))
+        row = conn.execute("SELECT starred FROM prompts WHERE id=?", (pid,)).fetchone()
+    if not row:
+        return jsonify(error="Not found"), 404
+    return jsonify(starred=bool(row[0]))
+
+@app.route("/api/prompts/<int:pid>/tags", methods=["POST"])
+def set_tags(pid):
+    tags = (request.get_json() or {}).get("tags", "")
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("UPDATE prompts SET tags=? WHERE id=?", (tags.strip(), pid))
+    return jsonify(tags=tags.strip())
+
+
+# ── Prompt search (FTS5) ──────────────────────────────────────────────────────
+@app.route("/api/search-prompts")
+def search_prompts():
+    q = request.args.get("q", "").strip()
+    limit = min(int(request.args.get("limit", 8)), 20)
+    if not q:
+        return jsonify(results=[])
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT c.id, c.title, c.category, c.prompt, c.image_url
+            FROM community_prompts_fts f
+            JOIN community_prompts c ON c.id = f.rowid
+            WHERE community_prompts_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+        """, (q + "*", limit)).fetchall()
+    return jsonify(results=[dict(r) for r in rows])
+
+
+# ── Batch generation ──────────────────────────────────────────────────────────
+@app.route("/batch-generate", methods=["POST"])
+@api_key_required
+def batch_generate():
+    data     = request.get_json() or {}
+    prompts  = data.get("prompts") or []       # list of strings
+    quality  = data.get("quality", "medium")
+    size     = data.get("size", "1024x1024")
+
+    if not prompts or not isinstance(prompts, list):
+        return jsonify(error="prompts must be a non-empty list"), 400
+    prompts = [p.strip() for p in prompts[:20] if str(p).strip()]  # max 20
+    if not prompts:
+        return jsonify(error="No valid prompts"), 400
+
+    batch_id = uuid.uuid4().hex[:12]
+    job_ids  = []
+    for p in prompts:
+        job_id = uuid.uuid4().hex[:12]
+        with _jobs_lock:
+            _jobs[job_id] = {"status": "running", "created_at": time.time(),
+                             "batch_id": batch_id}
+        t = threading.Thread(target=_run_generation,
+                             args=(job_id, p, "", quality, size, 1, p), daemon=True)
+        t.start()
+        job_ids.append({"job_id": job_id, "prompt": p})
+
+    return jsonify(batch_id=batch_id, jobs=job_ids,
+                   estimated_cost=calc_cost(quality, size, len(prompts)))
+
+
+# ── ZIP export ────────────────────────────────────────────────────────────────
+@app.route("/export-zip", methods=["POST"])
+def export_zip():
+    import zipfile as _zip
+    ids = (request.get_json() or {}).get("ids") or []
+    if not ids:
+        return jsonify(error="ids required"), 400
+
+    buf = io.BytesIO()
+    manifest = []
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        with _zip.ZipFile(buf, "w", _zip.ZIP_DEFLATED) as zf:
+            for pid in ids[:50]:
+                row = conn.execute(
+                    "SELECT id, prompt, revised_prompt, result_b64, quality, size, prompt_ts "
+                    "FROM prompts WHERE id=?", (pid,)
+                ).fetchone()
+                if not row:
+                    continue
+                if row["result_b64"]:
+                    img_data = base64.b64decode(row["result_b64"])
+                    zf.writestr(f"img_{row['id']:04d}.jpg", img_data)
+                manifest.append({
+                    "id": row["id"], "filename": f"img_{row['id']:04d}.jpg",
+                    "prompt": row["prompt"], "revised_prompt": row["revised_prompt"],
+                    "quality": row["quality"], "size": row["size"],
+                    "generated_at": row["prompt_ts"],
+                })
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+
+    buf.seek(0)
+    filename = f"image-studio-export-{datetime.now():%Y%m%d-%H%M%S}.zip"
+    return send_file(buf, mimetype="application/zip",
+                     as_attachment=True, download_name=filename)
+
+
+# ── REST API v1 ───────────────────────────────────────────────────────────────
+@app.route("/api/v1/generate", methods=["POST"])
+@api_key_required
+def api_v1_generate():
+    """External REST API — same as /generate but returns polling URL."""
+    data          = request.get_json() or {}
+    original_prompt = (data.get("prompt") or "").strip()
+    if not original_prompt:
+        return jsonify(error="prompt is required"), 400
+    prompt    = _resolve_vars(original_prompt, data.get("variables") or {})
+    image_b64 = data.get("image_b64") or ""
+    quality   = data.get("quality", "medium")
+    size      = data.get("size", "1024x1024")
+    n         = max(min(int(data.get("n", 1)), 4), 1)
+    negative  = (data.get("negative_prompt") or "").strip()
+    if negative:
+        prompt = f"{prompt}\n\nNegative Prompt:\n{negative}"
+
+    cost = calc_cost(quality, size, n)
+    _cleanup_old_jobs()
+    job_id = uuid.uuid4().hex[:12]
+    with _jobs_lock:
+        _jobs[job_id] = {"status": "running", "created_at": time.time()}
+
+    threading.Thread(target=_run_generation,
+                     args=(job_id, prompt, image_b64, quality, size, n, original_prompt),
+                     daemon=True).start()
+
+    base = request.host_url.rstrip("/")
+    return jsonify(job_id=job_id, estimated_cost=cost,
+                   poll_url=f"{base}/job-status/{job_id}"), 202
+
+@app.route("/spark")
+def spark():
+    return render_template("spark.html")
+
 
 @app.route("/studio")
 def studio():
@@ -679,6 +892,61 @@ def download(pid):
     elif row["result_url"]:
         return jsonify(url=row["result_url"])
     return jsonify(error="No image data"), 404
+
+PICTURES_DIR = os.path.expanduser("~/Pictures/OPENAI image 2.0")
+
+def _make_topic_slug(prompt: str) -> str:
+    import re
+    slug = re.sub(r'[^\w\s一-鿿]', '', prompt or '')
+    slug = re.sub(r'\s+', ' ', slug).strip()
+    return slug[:40]
+
+def _save_img_to_pictures(img_data: bytes, prompt: str) -> str:
+    os.makedirs(PICTURES_DIR, exist_ok=True)
+    topic = _make_topic_slug(prompt)
+    ts = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    filename = f"{ts} {topic}.png" if topic else f"{ts}.png"
+    with open(os.path.join(PICTURES_DIR, filename), "wb") as f:
+        f.write(img_data)
+    return filename
+
+@app.route("/save-to-pictures/<int:pid>", methods=["POST"])
+def save_to_pictures(pid):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT result_b64, result_url, prompt FROM prompts WHERE id=?", (pid,)
+        ).fetchone()
+    if not row:
+        return jsonify(error="Not found"), 404
+    if row["result_b64"]:
+        img_data = base64.b64decode(row["result_b64"])
+    elif row["result_url"]:
+        import urllib.request
+        with urllib.request.urlopen(row["result_url"]) as resp:
+            img_data = resp.read()
+    else:
+        return jsonify(error="No image data"), 404
+    filename = _save_img_to_pictures(img_data, row["prompt"] or "")
+    return jsonify(filename=filename)
+
+@app.route("/save-to-pictures", methods=["POST"])
+def save_to_pictures_dataurl():
+    data = request.get_json() or {}
+    data_url = data.get("data_url", "")
+    prompt = data.get("prompt", "")
+    if data_url.startswith("data:"):
+        _, encoded = data_url.split(",", 1)
+        img_data = base64.b64decode(encoded)
+    elif data_url.startswith("http"):
+        import urllib.request
+        with urllib.request.urlopen(data_url) as resp:
+            img_data = resp.read()
+    else:
+        return jsonify(error="No image data"), 400
+    filename = _save_img_to_pictures(img_data, prompt)
+    return jsonify(filename=filename)
+
 
 if __name__ == "__main__":
     init_db()  # only on direct execution, not on module import

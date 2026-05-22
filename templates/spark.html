@@ -1,0 +1,1388 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Spark · AI Image Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Manrope:wght@400;500;600;700&display=swap" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body { -webkit-font-smoothing: antialiased; }
+    @keyframes shimmer {
+      from { background-position: 300% 0; }
+      to   { background-position: -100% 0; }
+    }
+    @keyframes pop-pop {
+      from { opacity: 0; transform: translateY(-4px) scale(.985); }
+      to   { opacity: 1; transform: none; }
+    }
+    @keyframes pop-pulse {
+      0%,100% { transform: scale(1); opacity: 1; }
+      50%      { transform: scale(1.5); opacity: .6; }
+    }
+    @keyframes ref-in {
+      from { opacity: 0; transform: translateY(-3px); }
+      to   { opacity: 1; transform: none; }
+    }
+    input[type=range] { -webkit-appearance: none; appearance: none; }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #fff; border: 1.5px solid rgba(0,0,0,.18);
+      box-shadow: 0 1px 4px rgba(0,0,0,.2); cursor: pointer;
+    }
+    input[type=range]::-moz-range-thumb {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #fff; border: 1.5px solid rgba(0,0,0,.18);
+      box-shadow: 0 1px 4px rgba(0,0,0,.2); cursor: pointer; border: none;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(128,128,128,.25); border-radius: 3px; }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+{% raw %}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DESIGN TOKENS
+// ─────────────────────────────────────────────────────────────────────────────
+const LIGHT = {
+  bg: '#FAF7F2', surface: '#FFFFFF', surface2: '#F2EDE5',
+  border: 'rgba(20,16,30,0.07)', text: '#1A1626',
+  muted: 'rgba(26,22,38,0.55)', faint: 'rgba(26,22,38,0.35)',
+  accent1: '#7C3AED', shadow: '0 1px 0 rgba(20,16,30,0.04), 0 12px 32px -8px rgba(20,16,30,0.12)',
+};
+const DARK = {
+  bg: '#0E0B1A', surface: '#181428', surface2: '#221C36',
+  border: 'rgba(255,255,255,0.07)', text: '#F6F4FA',
+  muted: 'rgba(246,244,250,0.62)', faint: 'rgba(246,244,250,0.38)',
+  accent1: '#A78BFA', shadow: '0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 32px -8px rgba(0,0,0,0.6)',
+};
+const RADIUS = { sm: 8, md: 12, lg: 18, xl: 28 };
+const FONT_DISPLAY = '"Bricolage Grotesque", system-ui, sans-serif';
+const FONT_BODY = '"Manrope", system-ui, sans-serif';
+
+const ThemeCtx = React.createContext(null);
+function useTheme() { return React.useContext(ThemeCtx); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UTILITIES
+// ─────────────────────────────────────────────────────────────────────────────
+function hashStr(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function seededRand(seed) {
+  let s = (seed | 0) || 1;
+  return () => { s = (s * 1664525 + 1013904223) | 0; return ((s >>> 0) % 100000) / 100000; };
+}
+const HUE_FAMILIES = [
+  { hues: [12,28,340,0] }, { hues: [120,80,160,40] }, { hues: [200,220,180,260] },
+  { hues: [270,300,240,200] }, { hues: [330,280,200,50] }, { hues: [30,18,50,5] },
+  { hues: [10,350,30,280] }, { hues: [180,220,150,280] }, { hues: [50,80,30,180] },
+  { hues: [340,320,10,280] },
+];
+function PlaceholderArt({ seed, aspect = '1:1', style = {} }) {
+  const rng = seededRand(seed);
+  const fam = HUE_FAMILIES[Math.floor(rng() * HUE_FAMILIES.length)];
+  const pick = () => fam.hues[Math.floor(rng() * fam.hues.length)] + (rng() * 30 - 15);
+  const blob = () => {
+    const h = pick(), s = 70 + rng()*25, l = 45 + rng()*25;
+    const x = rng()*100, y = rng()*100, r = 30 + rng()*40;
+    return `radial-gradient(circle at ${x.toFixed(1)}% ${y.toFixed(1)}%, hsl(${h.toFixed(0)} ${s.toFixed(0)}% ${l.toFixed(0)}%) 0px, hsla(${h.toFixed(0)} ${s.toFixed(0)}% ${l.toFixed(0)}%/0) ${r.toFixed(0)}%)`;
+  };
+  const conic = () => {
+    const h1=pick(),h2=pick(),h3=pick(), from=(rng()*360).toFixed(0);
+    return `conic-gradient(from ${from}deg at ${(rng()*100).toFixed(0)}% ${(rng()*100).toFixed(0)}%, hsl(${h1.toFixed(0)} 75% 55%), hsl(${h2.toFixed(0)} 75% 55%), hsl(${h3.toFixed(0)} 75% 55%), hsl(${h1.toFixed(0)} 75% 55%))`;
+  };
+  const aspects = { '1:1':'1/1','4:3':'4/3','3:4':'3/4','16:9':'16/9','9:16':'9/16' };
+  return (
+    <div style={{
+      width:'100%', aspectRatio: aspects[aspect]||'1/1',
+      background: [blob(),blob(),blob(),blob(),conic()].join(', '),
+      backgroundColor: `hsl(${pick()} 60% 50%)`,
+      filter: 'saturate(1.15) contrast(1.05)',
+      ...style,
+    }} />
+  );
+}
+
+function sizeToAspect(size) {
+  if (!size) return '1:1';
+  if (size === '1792x1024' || size === '1536x1024') return '4:3';
+  if (size === '1024x1792' || size === '1024x1536') return '3:4';
+  return '1:1';
+}
+
+function fmtDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts.includes('T') ? ts : ts + 'Z');
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ICONS
+// ─────────────────────────────────────────────────────────────────────────────
+const Icon = {
+  sparkle: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6L12 3z"/><path d="M19 17l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z"/></svg>,
+  compass: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5 5-2z"/></svg>,
+  folder: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>,
+  settings: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9A1.7 1.7 0 0010 3.1V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>,
+  download: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>,
+  star: (p) => <svg viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+  close: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M6 6l12 12M18 6L6 18"/></svg>,
+  attach: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M21.4 11.05L12.5 19.9a5 5 0 11-7.05-7.05l9.2-9.2a3.5 3.5 0 014.95 4.95l-9.2 9.2a2 2 0 11-2.83-2.83l8.5-8.5"/></svg>,
+  wand: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5"/></svg>,
+  copy: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>,
+  square: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...p}><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg>,
+  landscape: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...p}><rect x="3" y="7" width="18" height="10" rx="1.5"/></svg>,
+  portrait: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...p}><rect x="7" y="3" width="10" height="18" rx="1.5"/></svg>,
+  wide: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...p}><rect x="2" y="8" width="20" height="8" rx="1.5"/></svg>,
+  tall: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...p}><rect x="8" y="2" width="8" height="20" rx="1.5"/></svg>,
+  sun: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>,
+  moon: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>,
+  variations: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>,
+  key: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3"/></svg>,
+  check: (p) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M20 6L9 17l-5-5"/></svg>,
+};
+
+const ASPECTS = ['1:1', '4:3', '3:4', '16:9', '9:16'];
+const ASPECT_ICON = { '1:1': Icon.square, '4:3': Icon.landscape, '3:4': Icon.portrait, '16:9': Icon.wide, '9:16': Icon.tall };
+const ASPECT_TO_SIZE = { '1:1': '1024x1024', '4:3': '1792x1024', '3:4': '1024x1792', '16:9': '1792x1024', '9:16': '1024x1792' };
+const STYLES = ['Photo','Cinematic','Illustration','Oil','3D Render','Anime','Risograph','Watercolor'];
+const SAMPLE_PROMPTS = [
+  'a quiet ramen bar at midnight, soft neon',
+  'rolling fog through giant sequoias, golden hour',
+  'cyberpunk cat detective in a smoky alley, cinematic',
+  'tiny astronaut watering an indoor jungle, isometric',
+  'frosted glass building facade, blue hour',
+  'risograph poster of a music festival, 80s palette',
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATOMS
+// ─────────────────────────────────────────────────────────────────────────────
+function PrimaryButton({ children, onClick, disabled, leadingIcon: I, size = 'md', fullWidth }) {
+  const { p } = useTheme();
+  const h = { sm:30, md:36, lg:44 }[size];
+  const px = { sm:'0 12px', md:'0 16px', lg:'0 20px' }[size];
+  const fs = size === 'lg' ? 14 : 13;
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      height: h, padding: px, borderRadius: RADIUS.md, border: 0,
+      background: disabled ? p.surface2 : `linear-gradient(135deg, ${p.accent1}, ${p.accent1}cc)`,
+      color: disabled ? p.faint : '#fff',
+      fontFamily: FONT_BODY, fontSize: fs, fontWeight: 600,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+      width: fullWidth ? '100%' : 'auto',
+      boxShadow: disabled ? 'none' : `0 6px 16px -4px ${p.accent1}66`,
+      transition: 'transform .08s, box-shadow .15s', flexShrink: 0,
+    }}
+    onMouseDown={(e) => !disabled && (e.currentTarget.style.transform = 'translateY(1px)')}
+    onMouseUp={(e) => (e.currentTarget.style.transform = '')}
+    onMouseLeave={(e) => (e.currentTarget.style.transform = '')}>
+      {I && <I width={fs} height={fs} />}
+      {children}
+    </button>
+  );
+}
+
+function GhostButton({ children, onClick, leadingIcon: I, size = 'md', active }) {
+  const { p } = useTheme();
+  const h = { sm:28, md:34, lg:40 }[size];
+  return (
+    <button onClick={onClick} style={{
+      height: h, padding: `0 ${size==='sm'?10:12}px`, borderRadius: RADIUS.md,
+      background: active ? p.surface2 : 'transparent',
+      border: `1px solid ${active ? 'transparent' : p.border}`,
+      color: active ? p.text : p.muted, cursor: 'pointer',
+      fontFamily: FONT_BODY, fontSize: 12, fontWeight: 600,
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      transition: 'background .12s, color .12s', flexShrink: 0,
+    }}
+    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = p.surface; }}
+    onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = active ? p.surface2 : 'transparent'; }}>
+      {I && <I width={14} height={14} />}
+      {children}
+    </button>
+  );
+}
+
+function Chip({ children, active, onClick, size = 'md' }) {
+  const { p } = useTheme();
+  const h = size === 'sm' ? 24 : 30;
+  return (
+    <button onClick={onClick} style={{
+      height: h, padding: `0 ${size==='sm'?10:14}px`, borderRadius: 999, border: 0,
+      background: active ? p.accent1 : p.surface,
+      color: active ? '#fff' : p.muted,
+      fontFamily: FONT_BODY, fontSize: size==='sm'?11:12, fontWeight: 600,
+      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
+      transition: 'background .12s, color .12s',
+    }}>{children}</button>
+  );
+}
+
+function SectionLabel({ children }) {
+  const { p } = useTheme();
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 700, letterSpacing: 0.6,
+      textTransform: 'uppercase', color: p.faint, marginBottom: 8,
+    }}>{children}</div>
+  );
+}
+
+function Avatar({ name = '?', size = 26 }) {
+  const seed = hashStr(name);
+  const h1 = seed % 360, h2 = (h1 + 60) % 360;
+  const initials = name.split(/[.\s_-]+/).slice(0,2).map(s=>s[0]||'').join('').toUpperCase();
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: 999, flexShrink: 0,
+      background: `linear-gradient(135deg, hsl(${h1} 70% 60%), hsl(${h2} 70% 50%))`,
+      color: '#fff', display: 'grid', placeItems: 'center',
+      fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: Math.round(size * 0.42),
+    }}>{initials}</div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APP STATE
+// ─────────────────────────────────────────────────────────────────────────────
+const AppCtx = React.createContext(null);
+function useApp() { return React.useContext(AppCtx); }
+
+function AppProvider({ children }) {
+  const [screen, setScreen] = React.useState('create');
+  const [screenParam, setScreenParam] = React.useState(null);
+  const [darkMode, setDarkMode] = React.useState(false);
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const [detailItem, setDetailItem] = React.useState(null);
+  const [libraryItems, setLibraryItems] = React.useState([]);
+  const [stats, setStats] = React.useState(null);
+  const [apiKeySet, setApiKeySet] = React.useState(false);
+  const [toasts, setToasts] = React.useState([]);
+
+  // Check API key on mount
+  React.useEffect(() => {
+    fetch('/api/stats').then(r => r.json()).then(s => {
+      setStats(s);
+      setApiKeySet(true);
+    }).catch(() => setApiKeySet(false));
+  }, []);
+
+  const loadLibrary = React.useCallback(() => {
+    fetch('/history').then(r => r.json()).then(setLibraryItems).catch(console.error);
+  }, []);
+
+  React.useEffect(() => { loadLibrary(); }, [loadLibrary]);
+
+  // Global ⌘K
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault(); setPaletteOpen(o => !o);
+      } else if (e.key === 'Escape') {
+        setPaletteOpen(false); setDetailItem(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const navigate = React.useCallback((to, param = null) => {
+    setScreen(to); setScreenParam(param);
+  }, []);
+
+  const addToast = React.useCallback((msg, type = 'info') => {
+    const id = Date.now();
+    setToasts(ts => [...ts, { id, msg, type }]);
+    setTimeout(() => setToasts(ts => ts.filter(t => t.id !== id)), 3500);
+  }, []);
+
+  const toggleStar = React.useCallback(async (pid) => {
+    try {
+      const r = await fetch(`/api/prompts/${pid}/star`, { method: 'POST' });
+      const d = await r.json();
+      setLibraryItems(items => items.map(i => i.id === pid ? { ...i, starred: d.starred ? 1 : 0 } : i));
+    } catch(e) { addToast('Failed to update star', 'error'); }
+  }, [addToast]);
+
+  const deleteItem = React.useCallback(async (pid) => {
+    try {
+      await fetch(`/history/${pid}`, { method: 'DELETE' });
+      setLibraryItems(items => items.filter(i => i.id !== pid));
+      setDetailItem(null);
+      addToast('Deleted');
+    } catch(e) { addToast('Failed to delete', 'error'); }
+  }, [addToast]);
+
+  const p = darkMode ? DARK : LIGHT;
+  const theme = { p, dark: darkMode, toggleDark: () => setDarkMode(d => !d) };
+
+  return (
+    <AppCtx.Provider value={{
+      screen, screenParam, navigate,
+      darkMode, theme,
+      paletteOpen, setPaletteOpen,
+      detailItem, setDetailItem,
+      libraryItems, loadLibrary,
+      stats, apiKeySet, setApiKeySet,
+      toasts, addToast,
+      toggleStar, deleteItem,
+    }}>
+      <ThemeCtx.Provider value={theme}>
+        {children}
+      </ThemeCtx.Provider>
+    </AppCtx.Provider>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHELL
+// ─────────────────────────────────────────────────────────────────────────────
+function Shell({ children }) {
+  const { p } = useTheme();
+  return (
+    <div style={{
+      width: '100vw', height: '100vh', overflow: 'hidden',
+      background: p.bg, color: p.text, fontFamily: FONT_BODY,
+      display: 'grid',
+      gridTemplateColumns: '64px 1fr',
+      gridTemplateRows: '56px 1fr',
+      gridTemplateAreas: '"rail header" "rail main"',
+    }}>
+      <TopBar />
+      <LeftRail />
+      <main style={{ gridArea: 'main', overflow: 'hidden', position: 'relative' }}>
+        {children}
+      </main>
+    </div>
+  );
+}
+
+function TopBar() {
+  const { p, dark, toggleDark } = useTheme();
+  const A = useApp();
+  const titles = { create: 'Create', library: 'Library', settings: 'Settings' };
+  const [notifOpen, setNotifOpen] = React.useState(false);
+
+  return (
+    <header style={{
+      gridArea: 'header', display: 'grid',
+      gridTemplateColumns: '1fr 1fr 1fr', alignItems: 'center',
+      padding: '0 24px', borderBottom: `1px solid ${p.border}`,
+      background: p.bg, position: 'relative', zIndex: 10,
+    }}>
+      {/* Left: logo + screen title */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+        <div style={{
+          fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 20,
+          letterSpacing: -0.5, display: 'flex', alignItems: 'center', gap: 9, color: p.text,
+        }}>
+          <span style={{
+            width: 24, height: 24, borderRadius: 7,
+            background: `linear-gradient(135deg, ${p.accent1}, ${p.accent1}88)`,
+            display: 'inline-block', boxShadow: `0 4px 12px -2px ${p.accent1}77`,
+          }} />
+          spark
+        </div>
+        {titles[A.screen] && (
+          <>
+            <div style={{ width: 1, height: 22, background: p.border }} />
+            <div style={{ fontFamily: FONT_DISPLAY, fontSize: 15, fontWeight: 600, color: p.text, letterSpacing: -0.2 }}>
+              {titles[A.screen]}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Center: search / command palette trigger */}
+      <div style={{ justifySelf: 'center', width: '100%', maxWidth: 420 }}>
+        <button onClick={() => A.setPaletteOpen(true)} style={{
+          all: 'unset', cursor: 'pointer', boxSizing: 'border-box',
+          display: 'flex', alignItems: 'center', width: '100%',
+          background: p.surface, border: `1px solid ${p.border}`,
+          borderRadius: 999, padding: '0 14px', height: 34, transition: 'background .12s',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = p.surface2}
+        onMouseLeave={e => e.currentTarget.style.background = p.surface}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ color: p.faint, flexShrink: 0 }}>
+            <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+          </svg>
+          <span style={{ flex:1, marginLeft:8, fontFamily:FONT_BODY, fontSize:12.5, color:p.faint }}>
+            Search or jump to…
+          </span>
+          <kbd style={{ padding:'1px 6px', background:p.surface2, borderRadius:4, fontSize:10, color:p.muted, fontFamily:'ui-monospace,monospace', fontWeight:600 }}>⌘K</kbd>
+        </button>
+      </div>
+
+      {/* Right: stats + dark mode + avatar */}
+      <div style={{ display:'flex', alignItems:'center', gap:8, justifySelf:'end', position:'relative' }}>
+        {A.stats && (
+          <button onClick={() => A.navigate('settings')} style={{
+            padding:'6px 11px', background:p.surface, border:`1px solid ${p.border}`,
+            borderRadius:999, color:p.muted, cursor:'pointer',
+            display:'flex', alignItems:'center', gap:6, fontSize:12,
+            fontFamily:FONT_BODY, fontWeight:600,
+          }}>
+            <Icon.sparkle width={13} height={13} style={{ color:p.accent1 }} />
+            <span style={{ color:p.text }}>{A.stats.total} images</span>
+          </button>
+        )}
+        <button onClick={toggleDark} title={dark ? 'Light mode' : 'Dark mode'} style={{
+          width:34, height:34, borderRadius:999, border:0,
+          background:'transparent', color:p.muted, cursor:'pointer',
+          display:'grid', placeItems:'center', transition:'background .12s',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = p.surface}
+        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+          {dark ? <Icon.sun width={18} height={18} /> : <Icon.moon width={18} height={18} />}
+        </button>
+        <button onClick={() => A.navigate('settings')} style={{
+          all:'unset', cursor:'pointer', borderRadius:999, transition:'box-shadow .15s',
+        }}
+        onMouseEnter={e => e.currentTarget.style.boxShadow = `0 0 0 2px ${p.accent1}55`}
+        onMouseLeave={e => e.currentTarget.style.boxShadow = ''}>
+          <Avatar name="You" size={30} />
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function LeftRail() {
+  const { p } = useTheme();
+  const A = useApp();
+  const items = [
+    { icon: Icon.sparkle, label: 'Create',  to: 'create' },
+    { icon: Icon.folder,  label: 'Library', to: 'library' },
+  ];
+  return (
+    <aside style={{
+      gridArea: 'rail', padding: '14px 10px',
+      display:'flex', flexDirection:'column', gap:4, alignItems:'center',
+      borderRight:`1px solid ${p.border}`, background:p.bg, position:'relative', zIndex:10,
+    }}>
+      {items.map(it => {
+        const on = A.screen === it.to;
+        return (
+          <button key={it.to} title={it.label} onClick={() => A.navigate(it.to)} style={{
+            width:44, height:44, borderRadius:12, position:'relative',
+            background: on ? `linear-gradient(135deg, ${p.accent1}22, ${p.accent1}0a)` : 'transparent',
+            border:0, color: on ? p.accent1 : p.muted, cursor:'pointer',
+            display:'grid', placeItems:'center', transition:'background .12s, color .12s',
+          }}
+          onMouseEnter={e => { if(!on) e.currentTarget.style.background = p.surface; }}
+          onMouseLeave={e => { if(!on) e.currentTarget.style.background = 'transparent'; }}>
+            <it.icon width={20} height={20} />
+            {on && (
+              <div style={{
+                position:'absolute', left:-10, top:12, bottom:12, width:3,
+                background:p.accent1, borderRadius:'0 3px 3px 0',
+              }} />
+            )}
+          </button>
+        );
+      })}
+      <div style={{ flex:1 }} />
+      <button title="Settings" onClick={() => A.navigate('settings')} style={{
+        width:44, height:44, borderRadius:12,
+        background: A.screen === 'settings' ? `linear-gradient(135deg, ${p.accent1}22, ${p.accent1}0a)` : 'transparent',
+        border:0, color: A.screen === 'settings' ? p.accent1 : p.muted, cursor:'pointer',
+        display:'grid', placeItems:'center',
+      }}>
+        <Icon.settings width={20} height={20} />
+      </button>
+    </aside>
+  );
+}
+
+// Animated screen swap
+function ScreenSwap({ screen, children }) {
+  const [shown, setShown] = React.useState({ screen, children });
+  const [phase, setPhase] = React.useState('idle');
+  React.useEffect(() => {
+    if (screen === shown.screen) { setShown({ screen, children }); return; }
+    setPhase('out');
+    const id = setTimeout(() => {
+      setShown({ screen, children }); setPhase('in');
+      requestAnimationFrame(() => setPhase('idle'));
+    }, 120);
+    return () => clearTimeout(id);
+  }, [screen, children]);
+  React.useEffect(() => {
+    if (screen === shown.screen) setShown({ screen, children });
+  }, [children, screen, shown.screen]);
+  const op = phase === 'out' ? 0 : 1;
+  const ty = phase === 'out' ? 6 : 0;
+  return (
+    <div style={{
+      width:'100%', height:'100%', overflow:'hidden',
+      opacity:op, transform:`translateY(${ty}px)`,
+      transition:'opacity .12s ease, transform .18s cubic-bezier(.2,.7,.3,1)',
+    }}>{shown.children}</div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMMAND PALETTE
+// ─────────────────────────────────────────────────────────────────────────────
+function CommandPalette() {
+  const { p } = useTheme();
+  const A = useApp();
+  const [query, setQuery] = React.useState('');
+  const [idx, setIdx] = React.useState(0);
+  const inputRef = React.useRef(null);
+  const overlayRef = React.useRef(null);
+
+  React.useEffect(() => { if (A.paletteOpen) { setQuery(''); setIdx(0); setTimeout(() => inputRef.current?.focus(), 30); } }, [A.paletteOpen]);
+
+  const actions = [
+    { label: 'Go to Create',  icon: Icon.sparkle, action: () => A.navigate('create') },
+    { label: 'Go to Library', icon: Icon.folder,  action: () => A.navigate('library') },
+    { label: 'Go to Settings',icon: Icon.settings, action: () => A.navigate('settings') },
+    ...A.libraryItems.slice(0,5).map(i => ({
+      label: i.prompt?.slice(0,60) || 'Untitled',
+      icon: Icon.variations,
+      action: () => { A.setDetailItem(i); A.setPaletteOpen(false); },
+    })),
+  ];
+  const filtered = query ? actions.filter(a => a.label.toLowerCase().includes(query.toLowerCase())) : actions;
+
+  const commit = (a) => { a.action(); A.setPaletteOpen(false); };
+
+  if (!A.paletteOpen) return null;
+  return (
+    <div ref={overlayRef} onClick={e => { if (e.target === overlayRef.current) A.setPaletteOpen(false); }}
+      style={{
+        position:'fixed', inset:0, zIndex:100,
+        background:'rgba(0,0,0,0.35)', backdropFilter:'blur(4px)',
+        display:'flex', alignItems:'flex-start', justifyContent:'center', paddingTop:120,
+      }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width:'100%', maxWidth:560,
+        background:p.surface, borderRadius:RADIUS.xl, border:`1px solid ${p.border}`,
+        boxShadow:'0 32px 80px -20px rgba(0,0,0,0.45)',
+        overflow:'hidden', animation:'pop-pop 140ms cubic-bezier(.2,.7,.3,1)',
+      }}>
+        <div style={{ display:'flex', alignItems:'center', padding:'0 16px', borderBottom:`1px solid ${p.border}` }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ color:p.faint, flexShrink:0 }}><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input ref={inputRef} value={query} onChange={e => { setQuery(e.target.value); setIdx(0); }}
+            onKeyDown={e => {
+              if (e.key === 'ArrowDown') { e.preventDefault(); setIdx(i => Math.min(i+1, filtered.length-1)); }
+              else if (e.key === 'ArrowUp') { e.preventDefault(); setIdx(i => Math.max(i-1, 0)); }
+              else if (e.key === 'Enter' && filtered[idx]) commit(filtered[idx]);
+              else if (e.key === 'Escape') A.setPaletteOpen(false);
+            }}
+            placeholder="Search or jump to…"
+            style={{
+              flex:1, border:0, outline:'none', background:'transparent',
+              padding:'16px 12px', fontFamily:FONT_BODY, fontSize:15, color:p.text,
+            }} />
+          <kbd style={{ padding:'2px 7px', background:p.surface2, borderRadius:5, fontSize:10, color:p.muted, fontFamily:'ui-monospace,monospace' }}>esc</kbd>
+        </div>
+        <div style={{ maxHeight:340, overflowY:'auto' }}>
+          {filtered.length === 0 && (
+            <div style={{ padding:'20px 16px', fontSize:13, color:p.faint, textAlign:'center' }}>No results</div>
+          )}
+          {filtered.map((a, i) => (
+            <button key={i} onClick={() => commit(a)} style={{
+              width:'100%', display:'flex', alignItems:'center', gap:12,
+              padding:'10px 16px', border:0, background: i===idx ? p.surface2 : 'transparent',
+              color:p.text, cursor:'pointer', fontFamily:FONT_BODY, fontSize:13,
+              textAlign:'left', transition:'background .08s',
+            }}
+            onMouseEnter={() => setIdx(i)}>
+              <span style={{ width:28, height:28, borderRadius:8, background:p.surface2, color:p.muted, display:'grid', placeItems:'center', flexShrink:0 }}>
+                <a.icon width={14} height={14} />
+              </span>
+              <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CREATE SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function CreateScreen() {
+  const { p } = useTheme();
+  const A = useApp();
+  const [prompt, setPrompt] = React.useState('');
+  const [quality, setQuality] = React.useState('medium');
+  const [aspect, setAspect] = React.useState('1:1');
+  const [style, setStyle] = React.useState('Photo');
+  const [count, setCount] = React.useState(1);
+  const [refImage, setRefImage] = React.useState(null); // {b64, name, strength}
+  const [generations, setGenerations] = React.useState([]);
+  const [busy, setBusy] = React.useState(false);
+  const [enhancing, setEnhancing] = React.useState(false);
+  const fileRef = React.useRef(null);
+
+  const generate = async () => {
+    if (!prompt.trim() || busy) return;
+    setBusy(true);
+    const size = ASPECT_TO_SIZE[aspect] || '1024x1024';
+    const pendingId = Date.now();
+    setGenerations(gs => [{ id: pendingId, prompt: prompt.trim(), style, aspect, images: [], pending: count }, ...gs]);
+
+    try {
+      const body = { prompt: prompt.trim(), quality, size, n: count };
+      if (refImage) { body.image_b64 = refImage.b64; }
+      const r = await fetch('/generate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const { job_id, error } = await r.json();
+      if (error) throw new Error(error);
+      await pollJob(job_id, pendingId);
+    } catch(e) {
+      A.addToast(e.message || 'Generation failed', 'error');
+      setGenerations(gs => gs.filter(g => g.id !== pendingId));
+    } finally {
+      setBusy(false);
+      A.loadLibrary();
+    }
+  };
+
+  const pollJob = async (job_id, genId) => {
+    while (true) {
+      await new Promise(res => setTimeout(res, 1500));
+      const r = await fetch(`/job-status/${job_id}`);
+      const job = await r.json();
+      if (job.status === 'done') {
+        setGenerations(gs => gs.map(g => g.id !== genId ? g : {
+          ...g, pending: 0,
+          images: job.results.map((res, i) => ({
+            id: genId + '-' + i, url: res.url, pid: res.pid,
+            revised: res.revised_prompt, cost: res.cost_usd,
+          })),
+        }));
+        return;
+      }
+      if (job.status === 'failed') throw new Error(job.error || 'Job failed');
+    }
+  };
+
+  const enhance = async () => {
+    if (!prompt.trim() || enhancing) return;
+    setEnhancing(true);
+    try {
+      const r = await fetch('/enhance-prompt', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ prompt: prompt.trim(), image_b64: refImage?.b64 || '' }),
+      });
+      const d = await r.json();
+      if (d.enhanced) setPrompt(d.enhanced);
+      else A.addToast(d.error || 'Enhance failed', 'error');
+    } catch(e) { A.addToast('Enhance failed', 'error'); }
+    finally { setEnhancing(false); }
+  };
+
+  const onPickFile = (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const b64 = ev.target.result.split(',')[1];
+      setRefImage({ b64, name: f.name, strength: 70 });
+    };
+    reader.readAsDataURL(f);
+    e.target.value = '';
+  };
+
+  const estimatedCost = () => {
+    const base = { low:0.011, medium:0.042, high:0.167 }[quality] || 0.042;
+    return (base * count).toFixed(3);
+  };
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 300px', height:'100%', overflow:'hidden' }}>
+      {/* Main area */}
+      <div style={{ display:'flex', flexDirection:'column', overflow:'hidden' }}>
+        {/* Prompt bar */}
+        <div style={{ padding:'22px 30px 16px', borderBottom:`1px solid ${p.border}` }}>
+          {refImage && (
+            <div style={{
+              display:'flex', alignItems:'center', gap:12, padding:8,
+              background: p.accent1 + '0d', border:`1px solid ${p.accent1}33`,
+              borderRadius:RADIUS.md, marginBottom:8, animation:'ref-in 180ms cubic-bezier(.2,.7,.3,1)',
+            }}>
+              <div style={{ width:44, height:44, borderRadius:8, overflow:'hidden', flexShrink:0 }}>
+                <img src={`data:image/jpeg;base64,${refImage.b64}`} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt="reference" />
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ padding:'2px 7px', borderRadius:4, fontSize:9, fontWeight:800, background:p.accent1, color:'#fff', letterSpacing:0.5, textTransform:'uppercase' }}>image-to-image</span>
+                  <span style={{ fontSize:12, color:p.text, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontFamily:'ui-monospace,monospace' }}>{refImage.name}</span>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:6 }}>
+                  <span style={{ fontSize:10, fontWeight:700, color:p.faint, letterSpacing:0.4, textTransform:'uppercase' }}>Influence</span>
+                  <input type="range" min={20} max={95} value={refImage.strength}
+                    onChange={e => setRefImage(r => ({ ...r, strength:+e.target.value }))}
+                    style={{ flex:1, maxWidth:220, height:4, borderRadius:999, appearance:'none', outline:'none',
+                      background:`linear-gradient(to right, ${p.accent1} 0%, ${p.accent1} ${(refImage.strength-20)/75*100}%, ${p.surface2} ${(refImage.strength-20)/75*100}%, ${p.surface2} 100%)` }} />
+                  <span style={{ fontSize:11, color:p.text, fontWeight:600, width:28 }}>{refImage.strength}%</span>
+                </div>
+              </div>
+              <button onClick={() => setRefImage(null)} style={{ width:26, height:26, borderRadius:7, border:0, background:'transparent', color:p.muted, cursor:'pointer', display:'grid', placeItems:'center', flexShrink:0 }}>
+                <Icon.close width={14} height={14} />
+              </button>
+            </div>
+          )}
+          <form onSubmit={e => { e.preventDefault(); generate(); }} style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            <div style={{
+              display:'flex', alignItems:'center', gap:8, padding:6,
+              background:p.surface, border:`1px solid ${refImage ? p.accent1+'88' : p.border}`,
+              borderRadius:RADIUS.lg, boxShadow:p.shadow, transition:'border-color .15s',
+            }}>
+              <input ref={fileRef} type="file" accept="image/*" onChange={onPickFile} style={{ display:'none' }} />
+              <button type="button" title="Attach reference image" onClick={() => fileRef.current?.click()} style={{
+                width:38, height:38, borderRadius:RADIUS.md,
+                background: refImage ? p.accent1+'22' : p.surface2,
+                border:0, color: refImage ? p.accent1 : p.muted, cursor:'pointer',
+                display:'grid', placeItems:'center', flexShrink:0,
+              }}><Icon.attach width={16} height={16} /></button>
+              <input value={prompt} onChange={e => setPrompt(e.target.value)}
+                placeholder={refImage ? 'Describe how to transform the reference…' : 'Describe an image to generate…'}
+                disabled={busy}
+                style={{ flex:1, border:0, background:'transparent', outline:'none', fontSize:15, fontFamily:FONT_BODY, color:p.text, padding:'0 6px', minWidth:0 }} />
+              <div style={{ display:'flex', alignItems:'center', gap:2, padding:'0 6px', borderLeft:`1px solid ${p.border}` }}>
+                {ASPECTS.map(a => {
+                  const AI = ASPECT_ICON[a]; const on = aspect === a;
+                  return (
+                    <button type="button" key={a} onClick={() => setAspect(a)} title={a} style={{
+                      width:30, height:30, borderRadius:8, background: on ? p.surface2 : 'transparent',
+                      border:0, cursor:'pointer', color: on ? p.text : p.muted, display:'grid', placeItems:'center',
+                    }}><AI width={16} height={16} /></button>
+                  );
+                })}
+              </div>
+              <button type="button" title="Enhance prompt with AI" onClick={enhance} disabled={!prompt.trim() || enhancing || busy} style={{
+                width:36, height:36, borderRadius:RADIUS.md, border:0,
+                background: enhancing ? p.accent1+'22' : p.surface2,
+                color: enhancing ? p.accent1 : p.muted, cursor:'pointer',
+                display:'grid', placeItems:'center', flexShrink:0, transition:'background .15s',
+              }}><Icon.wand width={16} height={16} /></button>
+              <PrimaryButton size="md" disabled={!prompt.trim() || busy} leadingIcon={Icon.sparkle}>
+                {busy ? 'Generating…' : 'Generate'}
+              </PrimaryButton>
+            </div>
+          </form>
+        </div>
+        {/* Results */}
+        <div data-scroll style={{ flex:1, overflowY:'auto', padding:'20px 30px 40px' }}>
+          {generations.length === 0 && <CreateEmpty setPrompt={setPrompt} />}
+          {generations.map((gen, gi) => (
+            <GenerationRow key={gen.id} gen={gen} isLatest={gi === 0 && busy}
+              onPick={img => A.setDetailItem({ ...img, prompt: gen.prompt, aspect: gen.aspect })}
+              onReuse={() => setPrompt(gen.prompt)} />
+          ))}
+        </div>
+      </div>
+
+      {/* Params panel */}
+      <ParamsPanel quality={quality} setQuality={setQuality} style={style} setStyle={setStyle} count={count} setCount={setCount} estimatedCost={estimatedCost()} />
+    </div>
+  );
+}
+
+function CreateEmpty({ setPrompt }) {
+  const { p } = useTheme();
+  return (
+    <div style={{ padding:40, display:'flex', flexDirection:'column', alignItems:'center', gap:24 }}>
+      <div style={{
+        width:80, height:80, borderRadius:24,
+        background:`linear-gradient(135deg, ${p.accent1}33, ${p.accent1}11)`,
+        display:'grid', placeItems:'center', color:p.accent1,
+      }}><Icon.sparkle width={36} height={36} /></div>
+      <div style={{ textAlign:'center', maxWidth:380 }}>
+        <div style={{ fontFamily:FONT_DISPLAY, fontSize:24, fontWeight:700, color:p.text, marginBottom:8 }}>Start with a prompt</div>
+        <div style={{ fontSize:13, lineHeight:1.55, color:p.muted }}>Describe what you want to see — the more sensory detail, the better.</div>
+      </div>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', justifyContent:'center', maxWidth:560 }}>
+        {SAMPLE_PROMPTS.map(s => <Chip key={s} onClick={() => setPrompt(s)}>{s}</Chip>)}
+      </div>
+    </div>
+  );
+}
+
+function GenerationRow({ gen, isLatest, onPick, onReuse }) {
+  const { p } = useTheme();
+  const total = gen.images.length + (gen.pending || 0);
+  const cols = Math.min(Math.max(total, 1), 4);
+  return (
+    <div style={{ marginBottom:32 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+        <div style={{
+          width:6, height:6, borderRadius:999,
+          background: isLatest ? p.accent1 : p.faint,
+          boxShadow: isLatest ? `0 0 10px ${p.accent1}` : 'none',
+          animation: isLatest ? 'pop-pulse 1.4s ease-in-out infinite' : 'none',
+        }} />
+        <div style={{ fontSize:13, color:p.text, fontWeight:500, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{gen.prompt}</div>
+        <span style={{ padding:'2px 8px', background:p.surface2, color:p.muted, borderRadius:999, fontSize:10, fontWeight:700 }}>{gen.aspect}</span>
+        <GhostButton size="sm" onClick={onReuse}>Reuse</GhostButton>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:`repeat(${cols}, 1fr)`, gap:12 }}>
+        {Array.from({ length: total }).map((_, i) => {
+          const img = gen.images[i];
+          if (!img) return (
+            <div key={i} style={{
+              aspectRatio: gen.aspect.replace(':','/'),
+              background:`linear-gradient(110deg, ${p.surface2} 30%, ${p.surface} 50%, ${p.surface2} 70%)`,
+              backgroundSize:'300% 100%', animation:'shimmer 1.6s ease-in-out infinite',
+              borderRadius:RADIUS.md,
+            }} />
+          );
+          return <ResultCard key={img.id} img={img} aspect={gen.aspect} onPick={() => onPick(img)} />;
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ResultCard({ img, aspect, onPick }) {
+  const { p } = useTheme();
+  const [hover, setHover] = React.useState(false);
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} onClick={onPick}
+      style={{
+        position:'relative', cursor:'pointer', borderRadius:RADIUS.md, overflow:'hidden',
+        transition:'transform .15s, box-shadow .15s',
+        transform: hover ? 'translateY(-3px)' : '',
+        boxShadow: hover ? '0 16px 36px -12px rgba(0,0,0,.35)' : '0 1px 0 rgba(0,0,0,.05)',
+      }}>
+      <img src={img.url} alt="" style={{ width:'100%', display:'block', borderRadius:RADIUS.md }} />
+      <div style={{
+        position:'absolute', inset:0,
+        background: hover ? 'linear-gradient(to top, rgba(0,0,0,.55) 0%, rgba(0,0,0,0) 50%)' : 'transparent',
+        transition:'background .15s', display:'flex', alignItems:'flex-end', padding:10,
+        pointerEvents: hover ? 'auto' : 'none',
+      }}>
+        {hover && (
+          <div style={{ display:'flex', gap:6, marginLeft:'auto' }}>
+            <button onClick={e => { e.stopPropagation(); window.open(img.url); }} title="Download" style={{
+              width:30, height:30, borderRadius:8, border:0,
+              background:'rgba(255,255,255,.92)', color:'#222', cursor:'pointer',
+              display:'grid', placeItems:'center',
+            }}><Icon.download width={14} height={14} /></button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ParamsPanel({ quality, setQuality, style, setStyle, count, setCount, estimatedCost }) {
+  const { p } = useTheme();
+  return (
+    <aside style={{
+      borderLeft:`1px solid ${p.border}`, background:p.bg,
+      padding:20, display:'flex', flexDirection:'column', gap:18, overflowY:'auto',
+    }}>
+      <div>
+        <SectionLabel>Quality</SectionLabel>
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          {['low','medium','high'].map(q => (
+            <button key={q} onClick={() => setQuality(q)} style={{
+              padding:'8px 12px', borderRadius:RADIUS.sm, cursor:'pointer',
+              background: quality===q ? p.surface : 'transparent',
+              border:`1px solid ${quality===q ? p.accent1+'55' : 'transparent'}`,
+              color: quality===q ? p.text : p.muted,
+              fontFamily:FONT_BODY, fontSize:12, fontWeight:600, textAlign:'left',
+              display:'flex', justifyContent:'space-between', alignItems:'center',
+              transition:'background .1s',
+            }}>
+              <span style={{ textTransform:'capitalize' }}>{q}</span>
+              <span style={{ fontSize:10, color:quality===q ? p.accent1 : p.faint }}>
+                {q==='low'?'$0.011':q==='medium'?'$0.042':'$0.167'}/img
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <SectionLabel>Style</SectionLabel>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+          {STYLES.map(s => <Chip key={s} size="sm" active={style===s} onClick={() => setStyle(s)}>{s}</Chip>)}
+        </div>
+      </div>
+      <div>
+        <SectionLabel>Count · {count}</SectionLabel>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:6 }}>
+          {[1,2,3,4].map(c => (
+            <button key={c} onClick={() => setCount(c)} style={{
+              padding:'7px 0', borderRadius:RADIUS.sm,
+              background: count===c ? p.surface : p.surface2,
+              border:`1px solid ${count===c ? p.accent1+'88' : 'transparent'}`,
+              color: count===c ? p.accent1 : p.muted, fontWeight:700,
+              fontSize:12, cursor:'pointer', fontFamily:FONT_BODY,
+            }}>{c}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginTop:'auto', padding:14, borderRadius:RADIUS.md, background:p.surface2, display:'flex', flexDirection:'column', gap:6 }}>
+        <div style={{ fontSize:11, color:p.muted, fontWeight:600 }}>Cost estimate</div>
+        <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+          <span style={{ fontFamily:FONT_DISPLAY, fontSize:26, fontWeight:700, color:p.text }}>${estimatedCost}</span>
+        </div>
+        <div style={{ fontSize:11, color:p.faint }}>~{quality==='low'?5:quality==='medium'?12:25}s · {quality} quality</div>
+      </div>
+    </aside>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIBRARY SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function LibraryScreen() {
+  const { p } = useTheme();
+  const A = useApp();
+  const [filter, setFilter] = React.useState('all'); // all | starred
+  const [searchQ, setSearchQ] = React.useState('');
+
+  const items = A.libraryItems.filter(i => {
+    if (!i.success) return false;
+    if (filter === 'starred' && !i.starred) return false;
+    if (searchQ && !i.prompt?.toLowerCase().includes(searchQ.toLowerCase())) return false;
+    return true;
+  });
+
+  return (
+    <div style={{ height:'100%', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      {/* Toolbar */}
+      <div style={{
+        display:'flex', alignItems:'center', gap:12, padding:'14px 24px',
+        borderBottom:`1px solid ${p.border}`, background:p.bg, flexShrink:0,
+      }}>
+        <div style={{ display:'flex', gap:4 }}>
+          {['all','starred'].map(f => (
+            <button key={f} onClick={() => setFilter(f)} style={{
+              padding:'5px 14px', borderRadius:999, border:0, cursor:'pointer',
+              background: filter===f ? p.accent1 : p.surface2,
+              color: filter===f ? '#fff' : p.muted,
+              fontFamily:FONT_BODY, fontSize:12, fontWeight:600,
+              transition:'background .12s',
+            }}>{f==='starred' ? '★ Starred' : 'All'}</button>
+          ))}
+        </div>
+        <div style={{ flex:1 }} />
+        <div style={{ position:'relative' }}>
+          <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:p.faint, pointerEvents:'none' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search prompts…"
+            style={{
+              padding:'7px 12px 7px 32px', border:`1px solid ${p.border}`,
+              borderRadius:999, background:p.surface, color:p.text,
+              fontFamily:FONT_BODY, fontSize:12, outline:'none', width:200,
+            }} />
+        </div>
+        <span style={{ fontSize:12, color:p.faint }}>{items.length} image{items.length!==1?'s':''}</span>
+      </div>
+
+      {/* Grid */}
+      <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
+        {items.length === 0 && (
+          <div style={{ padding:60, textAlign:'center', color:p.faint }}>
+            <Icon.folder width={40} height={40} style={{ margin:'0 auto 16px', display:'block', opacity:.3 }} />
+            <div style={{ fontSize:15, fontWeight:600, marginBottom:6 }}>No images yet</div>
+            <div style={{ fontSize:13 }}>Generate some images in Create to see them here.</div>
+          </div>
+        )}
+        <div style={{
+          display:'grid',
+          gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))',
+          gap:12,
+        }}>
+          {items.map(item => <LibraryCard key={item.id} item={item} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LibraryCard({ item }) {
+  const { p } = useTheme();
+  const A = useApp();
+  const [hover, setHover] = React.useState(false);
+  const aspect = sizeToAspect(item.size);
+  const imgSrc = item.has_image ? `/download/${item.id}` : null;
+
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        position:'relative', borderRadius:RADIUS.md, overflow:'hidden',
+        cursor:'pointer', border:`1px solid ${p.border}`,
+        transition:'border-color .12s, transform .15s, box-shadow .15s',
+        borderColor: hover ? p.accent1 : p.border,
+        transform: hover ? 'translateY(-2px)' : '',
+        boxShadow: hover ? `0 12px 32px -8px rgba(0,0,0,.25)` : 'none',
+        background: p.surface2,
+      }}
+      onClick={() => A.setDetailItem(item)}>
+      {imgSrc
+        ? <img src={imgSrc} alt="" style={{ width:'100%', display:'block', aspectRatio: aspect.replace(':','/'), objectFit:'cover' }} />
+        : <PlaceholderArt seed={hashStr(item.prompt||'')} aspect={aspect} />
+      }
+      {/* hover overlay */}
+      <div style={{
+        position:'absolute', inset:0,
+        background: hover ? 'linear-gradient(to top, rgba(0,0,0,.6) 0%, rgba(0,0,0,0) 55%)' : 'transparent',
+        transition:'background .15s',
+      }}>
+        {hover && (
+          <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'8px 10px' }}>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.9)', fontWeight:500, lineHeight:1.35, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' }}>
+              {item.prompt}
+            </div>
+          </div>
+        )}
+      </div>
+      {/* star badge */}
+      <button onClick={e => { e.stopPropagation(); A.toggleStar(item.id); }}
+        title={item.starred ? 'Unstar' : 'Star'}
+        style={{
+          position:'absolute', top:6, right:6,
+          width:26, height:26, borderRadius:7, border:0,
+          background: item.starred ? 'rgba(255,255,255,.92)' : hover ? 'rgba(0,0,0,.35)' : 'transparent',
+          color: item.starred ? '#FACC15' : 'rgba(255,255,255,.8)',
+          cursor:'pointer', display:'grid', placeItems:'center',
+          opacity: item.starred || hover ? 1 : 0, transition:'opacity .15s, background .15s',
+        }}>
+        <Icon.star width={13} height={13} fill={item.starred ? 'currentColor' : 'none'} />
+      </button>
+      {/* cost badge */}
+      {item.cost_usd && (
+        <div style={{
+          position:'absolute', bottom:6, right:6,
+          padding:'2px 6px', borderRadius:4, fontSize:9, fontWeight:700,
+          background:'rgba(0,0,0,.45)', color:'rgba(255,255,255,.8)',
+          backdropFilter:'blur(4px)',
+        }}>${item.cost_usd.toFixed(3)}</div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DETAIL MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function DetailModal() {
+  const { p } = useTheme();
+  const A = useApp();
+  const item = A.detailItem;
+  if (!item) return null;
+
+  const imgSrc = item.url || (item.has_image ? `/download/${item.id}` : null);
+  const aspect = item.aspect || sizeToAspect(item.size);
+  const pid = item.pid || item.id;
+
+  const copyPrompt = () => {
+    navigator.clipboard.writeText(item.revised || item.prompt || '').then(() => A.addToast('Prompt copied'));
+  };
+
+  const downloadImg = () => {
+    if (pid) { window.location.href = `/download/${pid}`; return; }
+    if (imgSrc) { const a = document.createElement('a'); a.href = imgSrc; a.download = 'spark-image.png'; a.click(); }
+  };
+
+  return (
+    <div onClick={() => A.setDetailItem(null)} style={{
+      position:'fixed', inset:0, zIndex:80,
+      background:'rgba(0,0,0,.55)', backdropFilter:'blur(6px)',
+      display:'flex', alignItems:'center', justifyContent:'center', padding:32,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        display:'grid', gridTemplateColumns:'1fr 340px',
+        maxWidth:1100, width:'100%', maxHeight:'90vh',
+        background:p.surface, borderRadius:RADIUS.xl, overflow:'hidden',
+        boxShadow:'0 40px 100px -20px rgba(0,0,0,.5)',
+        animation:'pop-pop 180ms cubic-bezier(.2,.7,.3,1)',
+      }}>
+        {/* Image side */}
+        <div style={{ background:p.surface2, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', minHeight:300 }}>
+          {imgSrc
+            ? <img src={imgSrc} alt="" style={{ maxWidth:'100%', maxHeight:'80vh', objectFit:'contain', borderRadius:RADIUS.md }} />
+            : <PlaceholderArt seed={hashStr(item.prompt||'')} aspect={aspect} style={{ width:'100%' }} />
+          }
+        </div>
+        {/* Meta side */}
+        <div style={{ display:'flex', flexDirection:'column', overflow:'hidden' }}>
+          {/* header */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 20px', borderBottom:`1px solid ${p.border}` }}>
+            <div style={{ fontFamily:FONT_DISPLAY, fontSize:16, fontWeight:700, color:p.text }}>Image Detail</div>
+            <button onClick={() => A.setDetailItem(null)} style={{ width:30, height:30, borderRadius:8, border:0, background:'transparent', color:p.muted, cursor:'pointer', display:'grid', placeItems:'center' }}>
+              <Icon.close width={16} height={16} />
+            </button>
+          </div>
+          {/* content */}
+          <div style={{ flex:1, overflowY:'auto', padding:20, display:'flex', flexDirection:'column', gap:20 }}>
+            <div>
+              <SectionLabel>Prompt</SectionLabel>
+              <p style={{ fontSize:13, color:p.text, lineHeight:1.55, margin:0 }}>{item.revised || item.prompt || '—'}</p>
+              {item.revised && item.prompt !== item.revised && (
+                <p style={{ fontSize:11, color:p.faint, marginTop:6 }}>Original: {item.prompt}</p>
+              )}
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              {[
+                ['Model', item.model || 'gpt-image-2'],
+                ['Quality', item.quality || '—'],
+                ['Size', item.size || '—'],
+                ['Aspect', aspect],
+                ['Date', fmtDate(item.prompt_ts)],
+                ['Cost', item.cost_usd ? `$${Number(item.cost_usd).toFixed(3)}` : item.cost ? `$${Number(item.cost).toFixed(3)}` : '—'],
+              ].map(([k,v]) => (
+                <div key={k}>
+                  <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:'uppercase', color:p.faint, marginBottom:3 }}>{k}</div>
+                  <div style={{ fontSize:12, color:p.text, fontWeight:500 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* actions */}
+          <div style={{ padding:'14px 20px', borderTop:`1px solid ${p.border}`, display:'flex', flexDirection:'column', gap:8 }}>
+            <PrimaryButton fullWidth leadingIcon={Icon.download} onClick={downloadImg}>Download</PrimaryButton>
+            <GhostButton fullWidth leadingIcon={Icon.copy} onClick={copyPrompt}>Copy Prompt</GhostButton>
+            {pid && (
+              <GhostButton fullWidth leadingIcon={Icon.star} onClick={() => A.toggleStar(pid)}>
+                {A.libraryItems.find(i=>i.id===pid)?.starred ? 'Unstar' : 'Star'}
+              </GhostButton>
+            )}
+            {pid && (
+              <button onClick={() => { if(confirm('Delete this image?')) A.deleteItem(pid); }} style={{
+                padding:'7px 12px', border:`1px solid ${p.border}`, borderRadius:RADIUS.md,
+                background:'transparent', color:p.faint, cursor:'pointer',
+                fontFamily:FONT_BODY, fontSize:12, fontWeight:600, transition:'color .12s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+              onMouseLeave={e => e.currentTarget.style.color = p.faint}>Delete</button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SETTINGS SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function SettingsScreen() {
+  const { p } = useTheme();
+  const A = useApp();
+  const [tab, setTab] = React.useState('account');
+  const [apiKey, setApiKey] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
+
+  const saveKey = async () => {
+    if (!apiKey.startsWith('sk-')) { A.addToast('API key must start with sk-', 'error'); return; }
+    setSaving(true);
+    try {
+      const r = await fetch('/set-key', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ api_key: apiKey }) });
+      const d = await r.json();
+      if (d.status === 'ok') {
+        setSaved(true); A.setApiKeySet(true);
+        A.addToast('API key saved');
+        setTimeout(() => setSaved(false), 2000);
+      } else {
+        A.addToast(d.message || 'Failed to save key', 'error');
+      }
+    } catch(e) { A.addToast('Failed to save key', 'error'); }
+    setSaving(false);
+  };
+
+  const tabs = [
+    { id:'account', label:'Account', icon:Icon.settings },
+    { id:'api', label:'API & Access', icon:Icon.key },
+  ];
+
+  return (
+    <div style={{ height:'100%', overflowY:'auto' }}>
+      <div style={{ maxWidth:900, margin:'0 auto', padding:'32px 32px 60px' }}>
+        <div style={{ marginBottom:32 }}>
+          <div style={{ fontSize:11, fontWeight:700, letterSpacing:0.8, color:p.accent1, textTransform:'uppercase', marginBottom:8 }}>Settings</div>
+          <h1 style={{ margin:0, fontFamily:FONT_DISPLAY, fontSize:32, fontWeight:700, color:p.text, letterSpacing:-0.6 }}>Manage your account</h1>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'200px 1fr', gap:32 }}>
+          {/* Sidebar */}
+          <aside style={{ display:'flex', flexDirection:'column', gap:2 }}>
+            {tabs.map(t => {
+              const I = t.icon; const on = tab === t.id;
+              return (
+                <button key={t.id} onClick={() => setTab(t.id)} style={{
+                  display:'flex', alignItems:'center', gap:10, padding:'10px 12px',
+                  borderRadius:RADIUS.sm, background: on ? p.surface2 : 'transparent',
+                  border:0, color: on ? p.text : p.muted, cursor:'pointer',
+                  fontFamily:FONT_BODY, fontSize:13, fontWeight:600, textAlign:'left',
+                  transition:'background .12s, color .12s',
+                }}
+                onMouseEnter={e => { if(!on) e.currentTarget.style.background = p.surface; }}
+                onMouseLeave={e => { if(!on) e.currentTarget.style.background = 'transparent'; }}>
+                  <span style={{ width:26, height:26, borderRadius:7, background: on ? p.accent1+'22' : p.surface2, color: on ? p.accent1 : p.muted, display:'grid', placeItems:'center', flexShrink:0 }}>
+                    <I width={14} height={14} />
+                  </span>
+                  {t.label}
+                </button>
+              );
+            })}
+          </aside>
+
+          {/* Content */}
+          <div style={{ display:'flex', flexDirection:'column', gap:24 }}>
+            {tab === 'account' && (
+              <SettingsCard title="Profile">
+                <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+                  <Avatar name="You" size={56} />
+                  <div>
+                    <div style={{ fontSize:16, fontWeight:700, color:p.text, fontFamily:FONT_DISPLAY }}>Your Account</div>
+                    <div style={{ fontSize:13, color:p.muted, marginTop:3 }}>Manage your API key and settings below.</div>
+                  </div>
+                </div>
+              </SettingsCard>
+            )}
+            {tab === 'api' && (
+              <>
+                <SettingsCard title="OpenAI API Key">
+                  <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                    <div style={{ fontSize:13, color:p.muted, lineHeight:1.5 }}>
+                      Spark uses the OpenAI GPT Image 2 model. Provide your API key to enable image generation.
+                    </div>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <input
+                        type="password"
+                        value={apiKey}
+                        onChange={e => setApiKey(e.target.value)}
+                        placeholder="sk-..."
+                        style={{
+                          flex:1, padding:'10px 14px', border:`1px solid ${p.border}`,
+                          borderRadius:RADIUS.md, background:p.surface2, color:p.text,
+                          fontFamily:'ui-monospace,monospace', fontSize:13, outline:'none',
+                          transition:'border-color .15s',
+                        }}
+                        onFocus={e => e.target.style.borderColor = p.accent1}
+                        onBlur={e => e.target.style.borderColor = p.border}
+                      />
+                      <PrimaryButton onClick={saveKey} disabled={saving || !apiKey} leadingIcon={saved ? Icon.check : Icon.key}>
+                        {saving ? 'Saving…' : saved ? 'Saved' : 'Save Key'}
+                      </PrimaryButton>
+                    </div>
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <div style={{
+                        width:8, height:8, borderRadius:999,
+                        background: A.apiKeySet ? '#22c55e' : '#ef4444',
+                      }} />
+                      <span style={{ fontSize:12, color:p.muted }}>
+                        {A.apiKeySet ? 'API key is configured' : 'No API key configured — image generation is disabled'}
+                      </span>
+                    </div>
+                  </div>
+                </SettingsCard>
+                <SettingsCard title="Usage">
+                  {A.stats ? (
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:16 }}>
+                      {[
+                        ['Total Images', A.stats.total],
+                        ['Successful', A.stats.successes],
+                        ['Total Cost', `$${Number(A.stats.total_cost||0).toFixed(3)}`],
+                      ].map(([k,v]) => (
+                        <div key={k} style={{ padding:16, background:p.surface2, borderRadius:RADIUS.md }}>
+                          <div style={{ fontSize:10, fontWeight:700, letterSpacing:0.5, textTransform:'uppercase', color:p.faint, marginBottom:8 }}>{k}</div>
+                          <div style={{ fontFamily:FONT_DISPLAY, fontSize:28, fontWeight:700, color:p.text }}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize:13, color:p.faint }}>Set your API key to view usage stats.</div>
+                  )}
+                </SettingsCard>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsCard({ title, children }) {
+  const { p } = useTheme();
+  return (
+    <div style={{ background:p.surface, border:`1px solid ${p.border}`, borderRadius:RADIUS.lg, overflow:'hidden' }}>
+      <div style={{ padding:'16px 20px', borderBottom:`1px solid ${p.border}` }}>
+        <div style={{ fontSize:14, fontWeight:700, color:p.text, fontFamily:FONT_DISPLAY }}>{title}</div>
+      </div>
+      <div style={{ padding:20 }}>{children}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOAST
+// ─────────────────────────────────────────────────────────────────────────────
+function ToastStack() {
+  const { p } = useTheme();
+  const A = useApp();
+  return (
+    <div style={{ position:'fixed', bottom:24, right:24, zIndex:200, display:'flex', flexDirection:'column', gap:8, alignItems:'flex-end' }}>
+      {A.toasts.map(t => (
+        <div key={t.id} style={{
+          padding:'10px 16px', borderRadius:RADIUS.md,
+          background: t.type==='error' ? '#ef4444' : p.text,
+          color: t.type==='error' ? '#fff' : p.bg,
+          fontFamily:FONT_BODY, fontSize:13, fontWeight:600,
+          boxShadow:'0 8px 24px -4px rgba(0,0,0,.3)',
+          animation:'pop-pop 150ms cubic-bezier(.2,.7,.3,1)',
+        }}>{t.msg}</div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROOT APP
+// ─────────────────────────────────────────────────────────────────────────────
+function App() {
+  const A = useApp();
+
+  const screen = (() => {
+    switch(A.screen) {
+      case 'create':   return <CreateScreen />;
+      case 'library':  return <LibraryScreen />;
+      case 'settings': return <SettingsScreen />;
+      default:         return <CreateScreen />;
+    }
+  })();
+
+  return (
+    <>
+      <Shell>
+        <ScreenSwap screen={A.screen}>{screen}</ScreenSwap>
+      </Shell>
+      <DetailModal />
+      <CommandPalette />
+      <ToastStack />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <AppProvider><App /></AppProvider>
+);
+{% endraw %}
+  </script>
+</body>
+</html>
