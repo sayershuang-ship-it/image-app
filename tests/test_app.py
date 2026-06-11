@@ -20,7 +20,7 @@ def test_index_renders(client):
 
 
 def test_app_pages_render(client):
-    for route in ["/studio", "/gallery", "/history-view", "/templates", "/spark"]:
+    for route in ["/studio", "/gallery", "/history-view", "/templates"]:
         rv = client.get(route)
         assert rv.status_code == 200, f"{route} returned {rv.status_code}"
 

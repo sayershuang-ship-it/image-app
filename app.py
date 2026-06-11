@@ -641,11 +641,6 @@ def api_v1_generate():
     return jsonify(job_id=job_id, estimated_cost=cost,
                    poll_url=f"{base}/job-status/{job_id}"), 202
 
-@app.route("/spark")
-def spark():
-    return render_template("spark.html")
-
-
 @app.route("/studio")
 def studio():
     return render_template("studio.html",

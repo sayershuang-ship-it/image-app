@@ -30,13 +30,7 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (reason) | REJECTED (rational
 
 ## Open operator decisions
 
-- **spark.html** (1,388 lines, largest template): reachable only by typing
-  `/spark`, linked from nowhere, duplicates studio's generate/enhance/set-key
-  flows with a different design. Options: delete / link as "Spark (beta)" /
-  port its UI ideas into studio then delete. Frozen until decided (plan 004
-  treats it as out of scope).
-- **Facebook App Secret rotation**: after plan 003 lands, rotate the secret in
-  the Meta developer console — it remains in git history.
+- （全部已解決）
 
 ## Findings considered and rejected (do not re-audit)
 
