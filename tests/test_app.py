@@ -45,3 +45,13 @@ def test_db_file_blocked(client):
 def test_fb_auth_requires_config(client):
     rv = client.get("/fb-auth-url")
     assert rv.status_code == 503
+
+
+def test_nav_consistent(client):
+    """All four app pages share the same nav links."""
+    for route in ["/studio", "/gallery", "/history-view", "/templates"]:
+        rv = client.get(route)
+        assert rv.status_code == 200
+        body = rv.data.decode()
+        for href in ["/gallery", "/history-view", "/studio", "/templates"]:
+            assert f'href="{href}"' in body, f"{route} missing nav link: {href}"

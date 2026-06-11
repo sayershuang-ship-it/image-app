@@ -15,6 +15,7 @@
       {% block badge %}{% endblock %}
       {% block breadcrumb %}{% endblock %}
     </div>
+    {% block nav_actions %}
     <div class="topbar-right">
       {% block nav_extra %}{% endblock %}
       <a href="/gallery"      class="nav-btn {% block nav_gallery %}{% endblock %}">Gallery</a>
@@ -22,6 +23,7 @@
       <a href="/studio"       class="nav-btn {% block nav_studio %}{% endblock %}">Studio</a>
       <a href="/templates"    class="nav-btn {% block nav_templates %}{% endblock %}">Templates</a>
     </div>
+    {% endblock %}
   </header>
   {% block content %}{% endblock %}
 </div>
