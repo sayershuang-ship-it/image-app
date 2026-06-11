@@ -698,14 +698,20 @@ def community_prompts_api():
 
 # ── Facebook Routes ──────────────────────────────────────────────────────────
 def _load_page_token(page_id=""):
-    """Load page token. If page_id provided, returns that page's token."""
+    """Load page token. If page_id provided, returns that page's token.
+    Lines format: pid:name:token (new) or pid:token (old, backward-compatible).
+    """
     try:
         if os.path.exists(FB_PAGE_TOKEN_FILE):
             with open(FB_PAGE_TOKEN_FILE) as f:
                 for line in f:
                     line = line.strip()
                     if ":" in line:
-                        pid, ptoken = line.split(":", 1)
+                        parts = line.split(":", 2)  # pid, name?, token
+                        if len(parts) == 3:
+                            pid, _, ptoken = parts
+                        else:
+                            pid, ptoken = parts[0], parts[1]
                         if page_id and pid == page_id:
                             return ptoken
                         elif not page_id:
@@ -713,21 +719,28 @@ def _load_page_token(page_id=""):
     except: pass
     return ""
 
-def _save_page_token(token, page_id=""):
-    """Save page token. Appends to file to support multiple pages."""
+def _save_page_token(token, page_id="", name=""):
+    """Save page token with optional page name. Appends to file."""
     existing = {}
     try:
         if os.path.exists(FB_PAGE_TOKEN_FILE):
             with open(FB_PAGE_TOKEN_FILE) as f:
                 for line in f:
+                    line = line.strip()
                     if ":" in line:
-                        pid, ptoken = line.strip().split(":", 1)
-                        existing[pid] = ptoken
+                        parts = line.split(":", 2)
+                        if len(parts) == 3:
+                            existing[parts[0]] = (parts[1], parts[2])
+                        else:
+                            existing[parts[0]] = ("", parts[1])
     except: pass
-    existing[page_id] = token
+    existing[page_id] = (name, token)
     with open(FB_PAGE_TOKEN_FILE, "w") as f:
-        for pid, ptoken in existing.items():
-            f.write(f"{pid}:{ptoken}\n")
+        for pid, (pname, ptoken) in existing.items():
+            if pname:
+                f.write(f"{pid}:{pname}:{ptoken}\n")
+            else:
+                f.write(f"{pid}:{ptoken}\n")
 
 @app.route("/fb-auth-url")
 def fb_auth_url():
@@ -776,9 +789,9 @@ def fb_callback():
         if not pages:
             return "<h1>No Pages found</h1><p>This account doesn't manage any Facebook Pages.</p>", 400
 
-        # Save all page tokens
+        # Save all page tokens with names
         for p in pages:
-            _save_page_token(p["access_token"], p["id"])
+            _save_page_token(p["access_token"], p["id"], p.get("name", ""))
 
         # Build response
         html = "<h1>✅ Authorized!</h1><ul>"
@@ -793,13 +806,31 @@ def fb_callback():
 @app.route("/fb-post", methods=["POST"])
 def fb_post():
     """Post an image to a Facebook page.
-    Body: {page_id, message, image_path (local) or image_url}
+    Body: {page_id, message, image_path (local) or image_url, or pid}
+    If pid is given, loads result_b64 from prompts table and uploads as multipart.
     """
     data = request.get_json() or {}
     page_id = data.get("page_id", "")
     message = data.get("message", "")
     image_path = data.get("image_path", "")
     image_url  = data.get("image_url", "")
+    pid = data.get("pid")           # prompt history id
+
+    # Resolve pid → base64 image bytes from DB
+    pid_bytes = None
+    if pid is not None:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT result_b64, prompt FROM prompts WHERE id=?", (pid,)
+        ).fetchone()
+        conn.close()
+        if not row or not row["result_b64"]:
+            return jsonify(error=f"No image found for pid={pid}"), 404
+        pid_bytes = base64.b64decode(row["result_b64"])
+        # Default message = prompt text, truncated
+        if not message and row["prompt"]:
+            message = row["prompt"][:500]
 
     # Load page token
     token = _load_page_token(page_id)
@@ -808,10 +839,15 @@ def fb_post():
 
     try:
         params = {"access_token": token, "message": message} if message else {"access_token": token}
+        import mimetypes
 
-        if image_path and os.path.exists(image_path):
-            # Upload as multipart
-            import mimetypes
+        if pid_bytes:
+            files = {"source": (f"generated_{pid}.png", pid_bytes, "image/png")}
+            r = requests.post(
+                f"https://graph.facebook.com/v22.0/{page_id}/photos",
+                data=params, files=files, timeout=30
+            )
+        elif image_path and os.path.exists(image_path):
             mime_type = mimetypes.guess_type(image_path)[0] or "image/png"
             with open(image_path, "rb") as img:
                 files = {"source": (os.path.basename(image_path), img, mime_type)}
@@ -826,7 +862,7 @@ def fb_post():
                 data=params, timeout=30
             )
         else:
-            return jsonify(error="image_path or image_url required"), 400
+            return jsonify(error="image_path, image_url, or pid required"), 400
 
         result = r.json()
         if "id" in result:
@@ -839,7 +875,7 @@ def fb_post():
 
 @app.route("/fb-pages")
 def fb_pages():
-    """List pages with saved tokens."""
+    """List pages with saved tokens and names."""
     pages = []
     found = False
     try:
@@ -847,8 +883,11 @@ def fb_pages():
             for line in f:
                 line = line.strip()
                 if ":" in line:
-                    pid, ptoken = line.split(":", 1)
-                    pages.append({"id": pid})
+                    parts = line.split(":", 2)
+                    if len(parts) == 3:
+                        pages.append({"id": parts[0], "name": parts[1]})
+                    else:
+                        pages.append({"id": parts[0], "name": ""})
                     found = True
     except FileNotFoundError:
         pass

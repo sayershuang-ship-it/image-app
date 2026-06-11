@@ -282,6 +282,30 @@
 .btn-accent { background: var(--accent); color: var(--surface); }
 .btn-outline { background: transparent; color: var(--fg); border: 1px solid var(--fg) !important; }
 
+/* ── FB Posting ───────────────────────────────────────── */
+.fb-panel { display: none; flex-direction: column; gap: 10px; }
+.fb-panel.open { display: flex; }
+.fb-panel select, .fb-panel textarea {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  width: 100%;
+  transition: border-color var(--ease);
+}
+.fb-panel select:focus, .fb-panel textarea:focus { outline: none; border-color: var(--accent); }
+.fb-panel textarea { min-height: 60px; resize: vertical; font-size: 12px; }
+.fb-panel .fb-actions { display: flex; gap: 8px; }
+.fb-panel .fb-actions .btn { flex: 1; font-size: 13px; padding: 8px 14px; }
+.fb-auth-hint {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.fb-auth-hint a { color: var(--accent); }
+
 /* ── Toast ──────────────────────────────────────────── */
 .toast-container {
   position: fixed;
@@ -364,8 +388,23 @@
       <div class="modal-prompt" id="modal-prompt"></div>
       <div class="modal-actions">
         <button class="btn btn-accent" id="modal-download">Download Image</button>
+        <button class="btn btn-outline" id="modal-fb-post">Post to Facebook</button>
         <button class="btn btn-outline" id="modal-star">&#9733; Star</button>
         <button class="btn btn-outline" id="modal-copy">Copy Prompt</button>
+      </div>
+      <div class="fb-panel" id="fb-panel">
+        <div class="fb-auth-hint" id="fb-auth-hint" style="display:none">
+          Connect your Facebook account to post.<br>
+          <a href="#" id="fb-connect-link" target="_blank">Authorize Facebook →</a>
+        </div>
+        <div id="fb-picker-area" style="display:none">
+          <select id="fb-page-select"></select>
+          <textarea id="fb-message" placeholder="Post message..."></textarea>
+          <div class="fb-actions">
+            <button class="btn btn-accent" id="fb-send-btn">Post</button>
+            <button class="btn btn-outline" id="fb-cancel-btn">Cancel</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -383,9 +422,9 @@ const state = {
 
 const $ = s => document.querySelector(s);
 
-function toast(msg) {
+function toast(msg, type) {
   const el = document.createElement('div');
-  el.className = 'toast success';
+  el.className = 'toast ' + (type || 'success');
   el.textContent = msg;
   $('#toast-container').appendChild(el);
   setTimeout(() => el.remove(), 4000);
@@ -531,6 +570,95 @@ $('#modal-download').addEventListener('click', async () => {
     if (d.filename) toast(`已儲存：${d.filename}`, 'success');
     else toast('儲存失敗', 'error');
   } catch (_) { toast('儲存失敗', 'error'); }
+});
+
+/* ── FB Posting ──────────────────────────────────── */
+
+let fbPages = [];
+
+$('#modal-fb-post').addEventListener('click', async () => {
+  if (!currentDetail) return;
+  const panel = $('#fb-panel');
+  // Toggle panel
+  if (panel.classList.contains('open')) {
+    panel.classList.remove('open');
+    return;
+  }
+  panel.classList.add('open');
+  $('#fb-auth-hint').style.display = 'none';
+  $('#fb-picker-area').style.display = 'none';
+
+  try {
+    // Load FB auth URL
+    const authR = await fetch('/fb-auth-url');
+    if (authR.status === 503) {
+      $('#fb-auth-hint').style.display = '';
+      const link = $('#fb-connect-link');
+      if (link) link.textContent = 'FB not configured (set FB_APP_ID / FB_APP_SECRET env vars)';
+      return;
+    }
+    const authD = await authR.json();
+    const connectLink = $('#fb-connect-link');
+    if (connectLink) connectLink.href = authD.url;
+
+    // Load pages
+    const r = await fetch('/fb-pages');
+    if (r.status === 400 || r.status === 401) {
+      $('#fb-auth-hint').style.display = '';
+      return;
+    }
+    fbPages = await r.json();
+    if (!fbPages || !fbPages.length) {
+      $('#fb-auth-hint').style.display = '';
+      return;
+    }
+
+    // Show page picker
+    const sel = $('#fb-page-select');
+    sel.innerHTML = fbPages.map(p =>
+      `<option value="${p.id}">${escHtml(p.name || p.id)}</option>`
+    ).join('');
+    $('#fb-message').value = (currentDetail.prompt || '').slice(0, 500);
+    $('#fb-picker-area').style.display = '';
+    $('#fb-auth-hint').style.display = 'none';
+  } catch (e) {
+    $('#fb-auth-hint').style.display = '';
+    const link = $('#fb-connect-link');
+    if (link) link.textContent = 'Could not reach server';
+  }
+});
+
+$('#fb-send-btn').addEventListener('click', async () => {
+  const pageId = $('#fb-page-select').value;
+  const message = $('#fb-message').value;
+  const pid = currentDetail ? currentDetail.id : null;
+  if (!pageId || !pid) return;
+  const btn = $('#fb-send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Posting…';
+  try {
+    const r = await fetch('/fb-post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pid, page_id: pageId, message })
+    });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      toast(`Posted to Facebook! Post ID: ${d.post_id}`);
+      $('#fb-panel').classList.remove('open');
+    } else {
+      toast(d.error || 'Post failed', 'error');
+    }
+  } catch (e) {
+    toast('Post failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Post';
+  }
+});
+
+$('#fb-cancel-btn').addEventListener('click', () => {
+  $('#fb-panel').classList.remove('open');
 });
 
 $('#modal-star').addEventListener('click', async () => {
