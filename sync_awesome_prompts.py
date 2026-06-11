@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Sync prompts from awesome-gpt-image-2 repo into community_prompts table."""
+"""Sync prompts from awesome-gpt-image-2 repo into community_prompts table.
+
+Usage:
+  python sync_awesome_prompts.py        # dry run (print what would be inserted)
+  python sync_awesome_prompts.py --run  # actually insert
+
+For FPD styles, use:
+  python import_fpd.py    # syncs 14 female-portrait-director routes from data/fpd_styles.json
+"""
 import os, re, sqlite3, sys
 
 CASES_DIR = os.path.join(os.path.dirname(__file__), "awesome-prompts", "cases")

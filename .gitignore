@@ -9,4 +9,6 @@ image-studio-redesign.html
 image-studio-redesign.md
 Design/
 prompts.db
+prompts.db-wal
+prompts.db-shm
 808ai_prompts_data.json
