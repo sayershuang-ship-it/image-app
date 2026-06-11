@@ -101,6 +101,21 @@ def init_db():
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE prompts ADD COLUMN {col} {definition}")
+        # Ensure community_prompts table exists (also created by sync_awesome_prompts.py)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS community_prompts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                category TEXT,
+                platform TEXT,
+                author TEXT,
+                image_url TEXT,
+                source_url TEXT,
+                prompt TEXT,
+                score INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         # FTS index for community_prompts
         conn.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS community_prompts_fts
@@ -182,7 +197,8 @@ def history():
             SELECT id, prompt, original_prompt, revised_prompt, quality, size, model,
                    prompt_ts, result_url, success, error_msg, cost_usd,
                    COALESCE(starred, 0) as starred, tags,
-                   CASE WHEN image_b64 IS NOT NULL THEN 1 ELSE 0 END as has_image
+                   CASE WHEN image_b64 IS NOT NULL THEN 1 ELSE 0 END as has_image,
+                   CASE WHEN result_b64 IS NOT NULL THEN 1 ELSE 0 END as has_result
             FROM prompts ORDER BY id DESC LIMIT 200
         """).fetchall()
     return jsonify([dict(r) for r in rows])
@@ -197,6 +213,30 @@ def get_history_item(pid):
     if not row:
         return jsonify(error="Not found"), 404
     return jsonify(dict(row))
+
+@app.route("/api/thumb/<int:pid>")
+def thumbnail(pid):
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT result_b64 FROM prompts WHERE id=?", (pid,)
+        ).fetchone()
+    if not row or not row[0]:
+        return '', 404
+    try:
+        img_bytes = base64.b64decode(row[0])
+        img = Image.open(io.BytesIO(img_bytes))
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        w, h = img.size
+        if w > 256 or h > 256:
+            ratio = min(256 / w, 256 / h)
+            img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=75)
+        return buf.getvalue(), 200, {'Content-Type': 'image/jpeg',
+                                     'Cache-Control': 'private, max-age=86400'}
+    except Exception:
+        return '', 500
 
 @app.route("/history/<int:pid>", methods=["DELETE"])
 def delete_history(pid):
