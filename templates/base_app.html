@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"{% block html_attrs %}{% endblock %}>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{% block title %}Image Studio{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}" />
+<style>{% block page_css %}{% endblock %}</style>
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="wordmark"><a href="/">Image Studio</a></div>
+      {% block badge %}{% endblock %}
+      {% block breadcrumb %}{% endblock %}
+    </div>
+    <div class="topbar-right">
+      {% block nav_extra %}{% endblock %}
+      <a href="/gallery"      class="nav-btn {% block nav_gallery %}{% endblock %}">Gallery</a>
+      <a href="/history-view" class="nav-btn {% block nav_history %}{% endblock %}">History</a>
+      <a href="/studio"       class="nav-btn {% block nav_studio %}{% endblock %}">Studio</a>
+      <a href="/templates"    class="nav-btn {% block nav_templates %}{% endblock %}">Templates</a>
+    </div>
+  </header>
+  {% block content %}{% endblock %}
+</div>
+{% block page_js %}{% endblock %}
+</body>
+</html>

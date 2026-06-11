@@ -1,10 +1,8 @@
-<!doctype html>
-<html lang="zh-TW">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Prompt Templates — Image Studio</title>
-<style>
+{% extends "base_app.html" %}
+{% block title %}Prompt Templates — Image Studio{% endblock %}
+{% block breadcrumb %}<span class="nav-breadcrumb">/ Templates</span>{% endblock %}
+{% block nav_templates %}active{% endblock %}
+{% block page_css %}
 :root {
   --bg:      oklch(98% 0.004 95);
   --surface: oklch(100% 0.002 95);
@@ -21,61 +19,10 @@
   --ease: 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  background: var(--bg);
-  color: var(--fg);
-  font: 15px/1.5 var(--font-body);
-  -webkit-font-smoothing: antialiased;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.app-shell { display: flex; flex-direction: column; height: 100vh; }
-
-/* ── Top Bar ────────────────────────────────────────── */
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  height: 52px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-  flex-shrink: 0;
-  gap: 16px;
-}
-.topbar-left { display: flex; align-items: center; gap: 14px; }
 .wordmark {
-  font-family: var(--font-display);
   font-size: 18px;
   font-weight: 500;
-  letter-spacing: -0.01em;
 }
-.wordmark a { text-decoration: none; color: var(--fg); }
-.nav-breadcrumb {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.topbar-right { display: flex; align-items: center; gap: 8px; }
-.nav-btn {
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 510;
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--muted);
-  cursor: pointer;
-  text-decoration: none;
-  transition: border-color var(--ease), color var(--ease);
-}
-.nav-btn:hover { border-color: var(--accent); color: var(--fg); }
-.nav-btn.active { border-color: var(--fg); color: var(--fg); }
 
 /* ── Workspace ─────────────────────────────────────── */
 .workspace {
@@ -297,32 +244,15 @@ body {
 .download-bar.show { display: flex; }
 .download-bar .filename { font-size: 12px; color: var(--muted); flex: 1; }
 
-/* ── Responsive ───────────────────────────────────── */
 @media (max-width: 860px) {
   .workspace { flex-direction: column; }
   .sidebar { width: 100%; min-width: 0; max-height: 40vh; }
   .main { min-height: 0; }
 }
-</style>
-</head>
-<body>
+{% endblock %}
 
-<div class="app-shell">
-  <header class="topbar">
-    <div class="topbar-left">
-      <div class="wordmark"><a href="/">Image Studio</a></div>
-      <span class="nav-breadcrumb">/ Templates</span>
-    </div>
-    <div class="topbar-right">
-      <a href="/gallery" class="nav-btn">Gallery</a>
-      <a href="/history-view" class="nav-btn">History</a>
-      <a href="/studio" class="nav-btn">Studio</a>
-      <a href="/templates" class="nav-btn active">Templates</a>
-    </div>
-  </header>
-
+{% block content %}
   <div class="workspace">
-    <!-- ── Sidebar ── -->
     <aside class="sidebar">
       <div class="sidebar-header">
         <h2>Prompt Templates</h2><span class="badge">21 + 65 examples</span>
@@ -331,7 +261,6 @@ body {
       <div class="template-list" id="templateList"></div>
     </aside>
 
-    <!-- ── Main ── -->
     <main class="main">
       <div class="toolbar">
         <label>Size</label>
@@ -370,8 +299,9 @@ body {
       </div>
     </main>
   </div>
-</div>
+{% endblock %}
 
+{% block page_js %}
 <script>
 const TEMPLATES = {
   'Design & Info': {
@@ -457,7 +387,7 @@ const TEMPLATES = {
       { name: 'Science Encyclopedia Poster', prompt: '根据【主题】生成一张高质量竖版「科普百科图」。兼具图鉴感、百科感、信息结构感和收藏感的模块化科普信息图。风格参考高级博物图鉴、现代百科书页。包含：清晰好看的主题主视觉，若干局部特征放大细节，多个圆角模块化信息分区，清楚的标题层级与重点标签。浅色干净背景，柔和配色，轻阴影，精致小图标。竖版。' },
       { name: 'Urban Metabolism Atlas', prompt: 'Vertical 9:16 isometric cutaway infographic "[City Name] 城市生命系统图谱 / Urban Metabolism Atlas". Smart city from sky to bedrock: skyscrapers, streets, subway, utility tunnels, water/sewage/gas/heating pipes, fiber, data center, flood tanks, aquifers, geothermal wells, bedrock. Color-coded flows for power/water/data/traffic/waste. 12 numbered panels bilingual CN/EN. Style: engineering white paper + scientific atlas, light paper bg, crisp lines, 8K.' },
       { name: 'Causal Chain Infographic', prompt: 'JSON: type "comprehensive infographic". Title "[Topic]诞生的因果链 / THE CAUSAL CHAIN OF [TOPIC]". Center: transparent anatomical/technical model. 12-14 sections tracing the complete causal chain from source to final outcome. Style: highly detailed 3D illustration, clean structured layout, bilingual CN/EN. 3:4 vertical.' },
-      { name: 'Hand-drawn Food Map', prompt: '一张手绘风格的城市美食地图，以[城市]为主题。鸟瞰视角的手绘简化城市地图为底，标注区域和水系地标。12个美食地点的精致手绘小插画，每个约占地图5%面积，旁边手写体标注店名和推荐语。边缘用手绘藤蔓和当地植物装饰形成边框。右下角手绘指南针和图例。水彩+彩铅混合手绘质感。1:1。' },
+      { name: 'Hand-drawn Food Map', prompt: '一张手绘风格的城市美食地图，以[城市]为主题。鸟瞰视角的手绘简化城市地图为底，标注区域和水系地标。12个美食地点的精致手绘小插画，每个约占地图面积5%面积，旁边手写体标注店名和推荐语。边缘用手绘藤蔓和当地植物装饰形成边框。右下角手绘指南针和图例。水彩+彩铅混合手绘质感。1:1。' },
       { name: 'Fashion Week Lookbook', prompt: 'JSON: type "7-day fashion lookbook infographic". 7 columns (Mon-Sun) with main portrait, 4 detail thumbnails, outfit specs, keywords, color swatches, star ratings, fabric/price, season icons per day. Elegant editorial style.' },
       { name: 'Emotional Wellness Grid', prompt: 'JSON: type "infographic poster", style "cute flat vector illustration, cozy, warm, soft shading, pastel Morandi colors". Header "[情绪主题]", 9 grid panels each with an actionable tip, icon illustration, and short description. Footer with encouragement message.' },
     ],
@@ -763,5 +693,4 @@ async function copyImage() {
 
 init();
 </script>
-</body>
-</html>
+{% endblock %}
