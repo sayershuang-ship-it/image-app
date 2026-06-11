@@ -40,3 +40,8 @@ def test_generate_requires_prompt(client):
 def test_db_file_blocked(client):
     rv = client.get("/prompts.db")
     assert rv.status_code == 403
+
+
+def test_fb_auth_requires_config(client):
+    rv = client.get("/fb-auth-url")
+    assert rv.status_code == 503

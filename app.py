@@ -33,8 +33,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
 
 # ── Facebook Config ────────────────────────────────────────────────────────────
-FB_APP_ID     = os.environ.get("FB_APP_ID", "1509522633850909")
-FB_APP_SECRET = os.environ.get("FB_APP_SECRET", "9e380e089e5c9ddb51553be21a035a2e")
+FB_APP_ID     = os.environ.get("FB_APP_ID", "")
+FB_APP_SECRET = os.environ.get("FB_APP_SECRET", "")
 FB_REDIRECT   = "http://localhost:5001/fb-callback"
 FB_PAGE_TOKEN_FILE = os.path.expanduser("~/.hermes/fb_page_token")
 KEY_FILE   = os.path.expanduser("~/.image-studio.env")
@@ -731,6 +731,8 @@ def _save_page_token(token, page_id=""):
 
 @app.route("/fb-auth-url")
 def fb_auth_url():
+    if not FB_APP_ID or not FB_APP_SECRET:
+        return jsonify(error="FB_APP_ID / FB_APP_SECRET not configured"), 503
     from urllib.parse import quote
     url = (
         "https://www.facebook.com/v22.0/dialog/oauth"
@@ -743,6 +745,8 @@ def fb_auth_url():
 
 @app.route("/fb-callback")
 def fb_callback():
+    if not FB_APP_ID or not FB_APP_SECRET:
+        return jsonify(error="FB_APP_ID / FB_APP_SECRET not configured"), 503
     code = request.args.get("code", "")
     if not code:
         return "<h1>Error: No code</h1>", 400
