@@ -1,10 +1,8 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>History — Image Studio</title>
-<style>
+{% extends "base_app.html" %}
+{% block title %}History — Image Studio{% endblock %}
+{% block breadcrumb %}<span class="nav-breadcrumb">/ History</span>{% endblock %}
+{% block nav_history %}active{% endblock %}
+{% block page_css %}
 :root {
   --bg:      oklch(98% 0.004 95);
   --surface: oklch(100% 0.002 95);
@@ -20,61 +18,10 @@
   --ease: 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  background: var(--bg);
-  color: var(--fg);
-  font: 15px/1.5 var(--font-body);
-  -webkit-font-smoothing: antialiased;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.app-shell { display: flex; flex-direction: column; height: 100vh; }
-
-/* ── Top Bar ────────────────────────────────────────── */
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  height: 52px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-  flex-shrink: 0;
-  gap: 16px;
-}
-.topbar-left { display: flex; align-items: center; gap: 14px; }
 .wordmark {
-  font-family: var(--font-display);
   font-size: 18px;
   font-weight: 500;
-  letter-spacing: -0.01em;
 }
-.wordmark a { text-decoration: none; color: var(--fg); }
-.nav-breadcrumb {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.topbar-right { display: flex; align-items: center; gap: 8px; }
-.nav-btn {
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 510;
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--muted);
-  cursor: pointer;
-  text-decoration: none;
-  transition: border-color var(--ease), color var(--ease);
-}
-.nav-btn:hover { border-color: var(--accent); color: var(--fg); }
-.nav-btn.active { border-color: var(--fg); color: var(--fg); }
 
 /* ── Toolbar ────────────────────────────────────────── */
 .toolbar {
@@ -415,7 +362,6 @@ body {
 .toast.success { border-left: 3px solid oklch(58% 0.12 160); }
 @keyframes slideIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 
-/* ── Responsive ─────────────────────────────────────── */
 @media (max-width: 700px) {
   .sidebar { width: 100%; }
   .history-item { padding: 14px 16px; gap: 12px; }
@@ -425,23 +371,9 @@ body {
   .history-scroll { padding: 16px; }
   .search-wrap { max-width: 100%; flex: 1 1 100%; order: 3; }
 }
-</style>
-</head>
-<body>
+{% endblock %}
 
-<div class="app-shell">
-  <header class="topbar">
-    <div class="topbar-left">
-      <div class="wordmark"><a href="/">Image Studio</a></div>
-      <span class="nav-breadcrumb">/ History</span>
-    </div>
-    <div class="topbar-right">
-      <a href="/gallery" class="nav-btn">Gallery</a>
-      <a href="/history-view" class="nav-btn active">History</a>
-      <a href="/studio" class="nav-btn">Studio</a>
-    </div>
-  </header>
-
+{% block content %}
   <div class="toolbar">
     <div class="toolbar-left">
       <h2>Prompt History</h2>
@@ -465,65 +397,66 @@ body {
       </div>
     </div>
   </div>
-</div>
 
-<div class="sidebar-backdrop" id="sidebar-backdrop"></div>
-<div class="sidebar" id="sidebar">
-  <div class="sidebar-header">
-    <h2>Prompt Detail</h2>
-    <button class="sidebar-close" id="sidebar-close">&times;</button>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>Prompt Detail</h2>
+      <button class="sidebar-close" id="sidebar-close">&times;</button>
+    </div>
+    <div class="sidebar-body">
+      <div id="detail-original-section" style="display:none">
+        <div class="sidebar-label">Original Prompt</div>
+        <p class="sidebar-revised" id="detail-original"></p>
+      </div>
+      <div>
+        <div class="sidebar-label">Enhanced Prompt</div>
+        <p class="sidebar-prompt" id="detail-prompt"></p>
+      </div>
+      <div>
+        <div class="sidebar-label">Revised by Model</div>
+        <p class="sidebar-revised" id="detail-revised"></p>
+      </div>
+      <div class="sidebar-meta-grid">
+        <div class="sidebar-meta-item">
+          <div class="label">Quality</div>
+          <div class="value" id="detail-quality">&mdash;</div>
+        </div>
+        <div class="sidebar-meta-item">
+          <div class="label">Size</div>
+          <div class="value" id="detail-size">&mdash;</div>
+        </div>
+        <div class="sidebar-meta-item">
+          <div class="label">Cost</div>
+          <div class="value" id="detail-cost">&mdash;</div>
+        </div>
+        <div class="sidebar-meta-item">
+          <div class="label">Status</div>
+          <div class="value" id="detail-status">&mdash;</div>
+        </div>
+        <div class="sidebar-meta-item" style="grid-column: 1 / -1">
+          <div class="label">Timestamp</div>
+          <div class="value" id="detail-ts">&mdash;</div>
+        </div>
+      </div>
+      <div class="sidebar-actions">
+        <button class="btn btn-accent" id="detail-restore">Restore to Studio</button>
+        <button class="btn btn-outline" id="detail-copy">Copy Prompt</button>
+        <button class="btn-danger-text" id="detail-delete">Delete Entry</button>
+      </div>
+    </div>
   </div>
-  <div class="sidebar-body">
-    <div id="detail-original-section" style="display:none">
-      <div class="sidebar-label">Original Prompt</div>
-      <p class="sidebar-revised" id="detail-original"></p>
-    </div>
-    <div>
-      <div class="sidebar-label">Enhanced Prompt</div>
-      <p class="sidebar-prompt" id="detail-prompt"></p>
-    </div>
-    <div>
-      <div class="sidebar-label">Revised by Model</div>
-      <p class="sidebar-revised" id="detail-revised"></p>
-    </div>
-    <div class="sidebar-meta-grid">
-      <div class="sidebar-meta-item">
-        <div class="label">Quality</div>
-        <div class="value" id="detail-quality">&mdash;</div>
-      </div>
-      <div class="sidebar-meta-item">
-        <div class="label">Size</div>
-        <div class="value" id="detail-size">&mdash;</div>
-      </div>
-      <div class="sidebar-meta-item">
-        <div class="label">Cost</div>
-        <div class="value" id="detail-cost">&mdash;</div>
-      </div>
-      <div class="sidebar-meta-item">
-        <div class="label">Status</div>
-        <div class="value" id="detail-status">&mdash;</div>
-      </div>
-      <div class="sidebar-meta-item" style="grid-column: 1 / -1">
-        <div class="label">Timestamp</div>
-        <div class="value" id="detail-ts">&mdash;</div>
-      </div>
-    </div>
-    <div class="sidebar-actions">
-      <button class="btn btn-accent" id="detail-restore">Restore to Studio</button>
-      <button class="btn btn-outline" id="detail-copy">Copy Prompt</button>
-      <button class="btn-danger-text" id="detail-delete">Delete Entry</button>
-    </div>
-  </div>
-</div>
 
-<div class="toast-container" id="toast-container"></div>
+  <div class="toast-container" id="toast-container"></div>
+{% endblock %}
 
+{% block page_js %}
 <script>
 const state = {
   entries: [],
   search: '',
   detailId: null,
-  selected: new Set(),  // selected entry ids for ZIP export
+  selected: new Set(),
 };
 
 const $ = s => document.querySelector(s);
@@ -558,6 +491,7 @@ async function loadHistory() {
       size: item.size || '1024x1024',
       n: 1,
       hasImage: !!item.has_image,
+      hasResult: !!item.has_result,
       success: item.success !== 0,
       error: item.error_msg || '',
       ts: item.prompt_ts || new Date().toISOString(),
@@ -594,8 +528,12 @@ function renderHistory() {
   $('#history-list').innerHTML = filtered.map(e => {
     const ts = new Date(e.ts);
     const dateStr = ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    const thumbColor = ['oklch(62% 0.14 25)','oklch(55% 0.12 200)','oklch(50% 0.10 160)','oklch(65% 0.15 50)','oklch(58% 0.13 290)','oklch(52% 0.11 320)','oklch(60% 0.14 100)','oklch(48% 0.08 180)'][e.id % 8];
-    const thumb = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="${thumbColor}"/><circle cx="32" cy="24" r="10" fill="oklch(100% 0 0 / 0.2)"/><rect x="18" y="38" width="28" height="12" rx="2" fill="oklch(0% 0 0 / 0.12)"/></svg>`;
+    const thumb = e.hasResult
+      ? `<img src="/api/thumb/${e.id}" width="64" height="64" alt="" loading="lazy" style="object-fit:cover;width:100%;height:100%">`
+      : (() => {
+          const c = ['oklch(62% 0.14 25)','oklch(55% 0.12 200)','oklch(50% 0.10 160)','oklch(65% 0.15 50)','oklch(58% 0.13 290)','oklch(52% 0.11 320)','oklch(60% 0.14 100)','oklch(48% 0.08 180)'][e.id % 8];
+          return `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" fill="${c}"/><circle cx="32" cy="24" r="10" fill="oklch(100% 0 0 / 0.2)"/><rect x="18" y="38" width="28" height="12" rx="2" fill="oklch(0% 0 0 / 0.12)"/></svg>`;
+        })();
     const sel = state.selected.has(e.id);
 
     return `<div class="history-item${sel ? ' selected' : ''}" data-id="${e.id}">
@@ -669,7 +607,6 @@ function openDetail(id) {
   if (!entry) return;
   state.detailId = id;
 
-  // Show original prompt if it differs from the (possibly enhanced) prompt
   const showOriginal = entry.originalPrompt && entry.originalPrompt !== entry.prompt;
   $('#detail-prompt').textContent = entry.prompt;
   const origSection = $('#detail-original-section');
@@ -809,5 +746,4 @@ $('#search-input').addEventListener('input', () => {
 
 loadHistory();
 </script>
-</body>
-</html>
+{% endblock %}
