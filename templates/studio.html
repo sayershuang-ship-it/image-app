@@ -16,31 +16,7 @@
     </div>
 {% endblock %}
 {% block page_css %}
-:root {
-  --bg:      oklch(14% 0.008 250);
-  --surface: oklch(18% 0.006 250);
-  --fg:      oklch(90% 0.005 250);
-  --muted:   oklch(54% 0.012 250);
-  --border:  oklch(24% 0.008 250);
-  --accent:  oklch(62% 0.18 255);
-
-  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
-  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
-
-  --radius-sm: 6px;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --ease: 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-[data-theme="light"] {
-  --bg:      oklch(99% 0.002 240);
-  --surface: oklch(100% 0 0);
-  --fg:      oklch(18% 0.012 250);
-  --muted:   oklch(54% 0.012 250);
-  --border:  oklch(92% 0.005 250);
-}
-
+/* ── Studio page styles — inherits Modern Minimal tokens from app.css ── */
 .wordmark {
   font-size: 16px;
   font-weight: 590;

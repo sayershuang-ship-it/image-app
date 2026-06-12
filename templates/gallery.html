@@ -3,24 +3,10 @@
 {% block breadcrumb %}<span class="nav-breadcrumb">/ Gallery</span>{% endblock %}
 {% block nav_gallery %}active{% endblock %}
 {% block page_css %}
-:root {
-  --bg:      oklch(98% 0.004 95);
-  --surface: oklch(100% 0.002 95);
-  --fg:      oklch(20% 0.018 70);
-  --muted:   oklch(48% 0.012 70);
-  --border:  oklch(90% 0.006 95);
-  --accent:  oklch(52% 0.10 28);
-
-  --font-display: 'Iowan Old Style', 'Charter', Georgia, serif;
-  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-mono:    ui-monospace, 'SF Mono', Menlo, monospace;
-
-  --ease: 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
+/* ── Gallery page styles — inherits Modern Minimal tokens from app.css ── */
 .wordmark {
   font-size: 18px;
-  font-weight: 500;
+  font-weight: 590;
 }
 
 /* ── Toolbar ────────────────────────────────────────── */
@@ -154,14 +140,31 @@
   color: var(--muted);
   font-size: 15px;
   text-align: center;
-  border: 2px dashed var(--border);
+  gap: 20px;
+}
+.gallery-empty-icon {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: oklch(from var(--accent) l c h / 0.08);
+  border: 1px solid oklch(from var(--accent) l c h / 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
 }
 .gallery-empty a {
-  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 590;
+  padding: 10px 24px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
   text-decoration: none;
-  margin-top: 12px;
-  font-weight: 510;
+  letter-spacing: 0.01em;
+  transition: opacity var(--ease);
 }
+.gallery-empty a:hover { opacity: 0.88; }
 
 /* ── Detail Modal ───────────────────────────────────── */
 .modal-backdrop {
@@ -356,7 +359,8 @@
   <div class="gallery-scroll">
     <div class="gallery-grid" id="gallery-grid">
       <div class="gallery-empty">
-        Loading...
+        <div class="gallery-empty-icon">—</div>
+        Loading…
       </div>
     </div>
   </div>
@@ -495,7 +499,7 @@ function renderGallery() {
   $('#gallery-count').textContent = `${filtered.length} image${filtered.length !== 1 ? 's' : ''}`;
 
   if (filtered.length === 0) {
-    $('#gallery-grid').innerHTML = `<div class="gallery-empty">No images yet.<br><a href="/studio">Generate your first image</a></div>`;
+    $('#gallery-grid').innerHTML = `<div class="gallery-empty"><div class="gallery-empty-icon">—</div><p>No images yet</p><a href="/studio">Generate your first image</a></div>`;
     return;
   }
 
