@@ -1,24 +1,41 @@
+
 <!doctype html>
-<html lang="en">
+<html lang="zh-TW" data-theme="dark">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Image Studio — AI Image Generation Powered by GPT Image 2</title>
+<title>Image Studio — GPT Image 2 驅動的 AI 圖像生成工具</title>
 <style>
+/* ═══════════════════════════════════════════════════════════
+   Modern Minimal — Linear / Vercel 風格
+   統一全站設計語言：暗色預設 + 電藍 accent + system fonts
+   ═══════════════════════════════════════════════════════════ */
+
 :root {
-  --bg:      oklch(98% 0.004 95);
-  --surface: oklch(100% 0.002 95);
-  --fg:      oklch(20% 0.018 70);
-  --muted:   oklch(48% 0.012 70);
-  --border:  oklch(90% 0.006 95);
-  --accent:  oklch(52% 0.10 28);
+  --bg:      oklch(14% 0.008 250);
+  --surface: oklch(18% 0.006 250);
+  --fg:      oklch(90% 0.005 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(24% 0.008 250);
+  --accent:  oklch(62% 0.18 255);
 
-  --font-display: 'Iowan Old Style', 'Charter', Georgia, serif;
-  --font-body:    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-mono:    ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono:    ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
 
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
   --max-width: 1200px;
   --ease: 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+[data-theme="light"] {
+  --bg:      oklch(99% 0.002 240);
+  --surface: oklch(100% 0 0);
+  --fg:      oklch(18% 0.012 250);
+  --muted:   oklch(54% 0.012 250);
+  --border:  oklch(92% 0.005 250);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -26,8 +43,10 @@
 body {
   background: var(--bg);
   color: var(--fg);
-  font: 17px/1.6 var(--font-body);
+  font: 16px/1.6 var(--font-body);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background var(--ease), color var(--ease);
 }
 
 /* ── Nav ──────────────────────────────────────────────── */
@@ -35,7 +54,9 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--bg);
+  background: oklch(from var(--bg) l c h / 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border);
   padding: 0 32px;
 }
@@ -49,11 +70,19 @@ body {
 }
 .nav-wordmark {
   font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 590;
   letter-spacing: -0.01em;
   text-decoration: none;
   color: var(--fg);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nav-wordmark .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 .nav-links {
   display: flex;
@@ -62,27 +91,101 @@ body {
   list-style: none;
 }
 .nav-links a {
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 510;
   color: var(--muted);
   text-decoration: none;
+  letter-spacing: 0.01em;
   transition: color var(--ease);
 }
 .nav-links a:hover { color: var(--fg); }
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.theme-toggle {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  transition: border-color var(--ease), color var(--ease);
+}
+.theme-toggle:hover { border-color: var(--accent); color: var(--fg); }
+
 .nav-cta {
   font-family: var(--font-body);
   font-size: 14px;
   font-weight: 590;
   padding: 8px 20px;
-  border: 1.5px solid var(--accent);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: var(--accent);
-  color: var(--surface);
+  color: #fff;
   cursor: pointer;
   text-decoration: none;
+  letter-spacing: 0.01em;
   transition: opacity var(--ease);
   white-space: nowrap;
 }
 .nav-cta:hover { opacity: 0.88; }
+
+/* Mobile hamburger */
+.nav-mobile-toggle {
+  display: none;
+  width: 36px; height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: border-color var(--ease);
+}
+.nav-mobile-toggle:hover { border-color: var(--accent); }
+
+.mobile-menu {
+  display: none;
+  position: fixed;
+  inset: 56px 0 0 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  z-index: 20;
+  padding: 24px 32px;
+  flex-direction: column;
+  gap: 4px;
+}
+.mobile-menu.open { display: flex; }
+.mobile-menu a {
+  font-size: 17px;
+  font-weight: 510;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  transition: color var(--ease);
+}
+.mobile-menu a:hover { color: var(--fg); }
+.mobile-menu .mobile-cta {
+  margin-top: 12px;
+  display: block;
+  text-align: center;
+  padding: 14px 24px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 590;
+  font-size: 15px;
+}
 
 /* ── Sections ─────────────────────────────────────────── */
 .section {
@@ -100,35 +203,70 @@ body {
   color: var(--accent);
   margin-bottom: 16px;
 }
+.section-header {
+  margin-bottom: 8px;
+}
+.section-header h2 {
+  font-family: var(--font-display);
+  font-size: clamp(32px, 4.5vw, 48px);
+  font-weight: 590;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+}
+.section-header p {
+  font-size: 17px;
+  color: var(--muted);
+  max-width: 560px;
+  line-height: 1.6;
+}
 
 /* ── Hero ─────────────────────────────────────────────── */
 .hero {
-  padding: 120px 32px 100px;
+  padding: 100px 32px 80px;
   text-align: center;
 }
 .hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--font-mono);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--accent);
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  padding: 6px 14px;
+  border: 1px solid oklch(from var(--accent) l c h / 0.25);
+  border-radius: 100px;
+  background: oklch(from var(--accent) l c h / 0.08);
+}
+.hero-tag .pulse {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 .hero h1 {
   font-family: var(--font-display);
-  font-size: clamp(48px, 7vw, 80px);
-  font-weight: 500;
-  line-height: 1.08;
-  letter-spacing: -0.02em;
-  max-width: 900px;
-  margin: 0 auto 24px;
+  font-size: clamp(44px, 7vw, 72px);
+  font-weight: 590;
+  line-height: 1.06;
+  letter-spacing: -0.025em;
+  max-width: 800px;
+  margin: 0 auto 20px;
 }
 .hero-sub {
-  font-size: clamp(18px, 2.2vw, 22px);
+  font-size: clamp(17px, 2vw, 20px);
   color: var(--muted);
-  max-width: 560px;
+  max-width: 520px;
   margin: 0 auto 40px;
-  line-height: 1.55;
+  line-height: 1.6;
+  letter-spacing: 0.005em;
 }
 .hero-actions {
   display: flex;
@@ -141,111 +279,266 @@ body {
   font-size: 16px;
   font-weight: 590;
   padding: 14px 32px;
-  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  border: none;
   background: var(--accent);
-  color: var(--surface);
+  color: #fff;
   cursor: pointer;
   text-decoration: none;
-  transition: opacity var(--ease);
+  letter-spacing: 0.01em;
+  transition: opacity var(--ease), transform var(--ease);
 }
-.btn-primary:hover { opacity: 0.88; }
+.btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
 .btn-outline {
   font-family: var(--font-body);
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 510;
   padding: 14px 32px;
-  border: 1.5px solid var(--fg);
-  background: transparent;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: var(--fg);
   cursor: pointer;
   text-decoration: none;
-  transition: background var(--ease);
+  letter-spacing: 0.01em;
+  transition: border-color var(--ease), background var(--ease);
 }
-.btn-outline:hover { background: var(--fg); color: var(--bg); }
+.btn-outline:hover { border-color: var(--fg); }
 
+.btn-primary kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 510;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: oklch(100% 0 0 / 0.15);
+  color: oklch(100% 0 0 / 0.7);
+  margin-left: 6px;
+  letter-spacing: 0;
+}
+
+/* ── Hero Visual — Studio mockup ──────────────────────── */
 .hero-visual {
   margin-top: 64px;
-  max-width: 800px;
+  max-width: 880px;
   margin-left: auto;
   margin-right: auto;
-  border: 2px solid var(--border);
-  aspect-ratio: 16 / 9;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--border), 0 24px 64px oklch(0% 0 0 / 0.3);
+}
+[data-theme="light"] .hero-visual {
+  box-shadow: 0 0 0 1px var(--border), 0 16px 48px oklch(0% 0 0 / 0.08);
+}
+
+/* Mock topbar */
+.mock-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 44px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.mock-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mock-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.mock-wordmark {
+  font-size: 13px;
+  font-weight: 590;
+  letter-spacing: -0.01em;
+}
+.mock-topbar-right {
+  display: flex;
+  gap: 6px;
+}
+.mock-pill {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+}
+.mock-pill.active {
+  border-color: var(--fg);
+  color: var(--fg);
+}
+
+/* Mock workspace */
+.mock-workspace {
+  display: flex;
+  height: 360px;
+}
+.mock-panel-left {
+  width: 320px;
+  min-width: 320px;
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg);
+}
+.mock-input {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+}
+.mock-textarea {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.mock-controls {
+  display: flex;
+  gap: 6px;
+}
+.mock-select {
+  flex: 1;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.mock-btn {
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: none;
+  font-size: 13px;
+  font-weight: 590;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 14px;
-  background: var(--surface);
-  position: relative;
+  cursor: default;
+}
+.mock-btn.accent {
+  background: var(--accent);
+  color: #fff;
+  flex: 1;
+}
+
+/* Mock gallery — generated images */
+.mock-panel-right {
+  flex: 1;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  background: var(--bg);
   overflow: hidden;
 }
-.hero-visual-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
+.mock-img {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  aspect-ratio: 1;
+  position: relative;
+  background: var(--surface);
+}
+.mock-img svg {
   width: 100%;
   height: 100%;
+  display: block;
 }
-.hero-visual-grid .cell {
-  background: var(--border);
-  transition: background 0.4s ease;
+.mock-img::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, oklch(0% 0 0 / 0.35) 0%, transparent 55%);
 }
-.hero-visual-grid .cell:nth-child(1) { background: oklch(62% 0.12 35); }
-.hero-visual-grid .cell:nth-child(2) { background: oklch(58% 0.10 200); }
-.hero-visual-grid .cell:nth-child(3) { background: oklch(55% 0.08 140); }
-.hero-visual-grid .cell:nth-child(4) { background: oklch(68% 0.14 55); }
-.hero-visual-grid .cell:nth-child(5) { background: oklch(45% 0.06 260); }
-.hero-visual-grid .cell:nth-child(6) { background: oklch(60% 0.12 15); }
-.hero-visual-grid .cell:nth-child(7) { background: oklch(52% 0.10 180); }
-.hero-visual-grid .cell:nth-child(8) { background: oklch(65% 0.13 40); }
-.hero-visual-grid .cell:nth-child(9) { background: oklch(50% 0.08 290); }
+.mock-img-tag {
+  position: absolute;
+  bottom: 6px; left: 6px;
+  z-index: 1;
+  font-size: 8px;
+  font-weight: 510;
+  color: oklch(100% 0 0 / 0.65);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
 
 /* ── How It Works ─────────────────────────────────────── */
 .steps {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
+  gap: 16px;
   margin-top: 48px;
 }
 .step {
   background: var(--surface);
-  padding: 48px 36px 40px;
+  padding: 40px 32px 36px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--ease);
 }
+.step:hover { border-color: oklch(from var(--accent) l c h / 0.4); }
 .step-num {
   font-family: var(--font-mono);
   font-size: 13px;
   color: var(--accent);
   margin-bottom: 20px;
   letter-spacing: 0.04em;
+  display: inline-block;
+  padding: 4px 10px;
+  border: 1px solid oklch(from var(--accent) l c h / 0.2);
+  border-radius: var(--radius-sm);
+  background: oklch(from var(--accent) l c h / 0.06);
 }
 .step h3 {
   font-family: var(--font-display);
-  font-size: 24px;
-  font-weight: 500;
-  margin-bottom: 12px;
+  font-size: 22px;
+  font-weight: 590;
+  margin-bottom: 10px;
   line-height: 1.25;
   letter-spacing: -0.01em;
 }
 .step p {
   font-size: 15px;
   color: var(--muted);
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 /* ── Features ─────────────────────────────────────────── */
 .features-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 2px;
+  gap: 16px;
   margin-top: 48px;
 }
 .feature {
   background: var(--surface);
-  padding: 40px 36px;
+  padding: 36px 32px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--ease);
 }
+.feature:hover { border-color: oklch(from var(--accent) l c h / 0.4); }
 .feature-kicker {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -256,9 +549,9 @@ body {
 }
 .feature h3 {
   font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 500;
-  margin-bottom: 10px;
+  font-size: 20px;
+  font-weight: 590;
+  margin-bottom: 8px;
   line-height: 1.25;
   letter-spacing: -0.01em;
 }
@@ -268,21 +561,101 @@ body {
   line-height: 1.6;
 }
 
+/* ── Rhythm Break ─────────────────────────────────────── */
+.rhythm-break {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 32px;
+}
+.rhythm-break-line {
+  height: 1px;
+  background: var(--border);
+}
+
 /* ── Showcase ─────────────────────────────────────────── */
 .showcase-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 2px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
   margin-top: 48px;
 }
 .showcase-item {
-  aspect-ratio: 1;
-  border: 1px solid var(--border);
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-lg);
   overflow: hidden;
+  position: relative;
+  border: 1px solid var(--border);
+  transition: border-color var(--ease), transform var(--ease);
+  cursor: default;
+  background: var(--surface);
 }
-.showcase-item .swatch {
+.showcase-item:hover {
+  border-color: oklch(from var(--accent) l c h / 0.5);
+  transform: translateY(-2px);
+}
+.showcase-item img.artwork {
   width: 100%;
   height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.showcase-item .swatch-label {
+  position: absolute;
+  bottom: 12px; left: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: oklch(100% 0 0 / 0.65);
+  text-transform: uppercase;
+  text-shadow: 0 1px 4px oklch(0% 0 0 / 0.4);
+}
+.showcase-item .swatch-sub {
+  position: absolute;
+  bottom: 12px; right: 14px;
+  font-size: 10px;
+  color: oklch(100% 0 0 / 0.4);
+  letter-spacing: 0.03em;
+}
+
+/* ── App Screen Links ─────────────────────────────────── */
+.app-links {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 48px;
+}
+.app-link {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 36px 32px;
+  text-decoration: none;
+  color: var(--fg);
+  transition: border-color var(--ease), background var(--ease);
+}
+.app-link:hover {
+  border-color: var(--accent);
+  background: oklch(from var(--accent) l c h / 0.03);
+}
+.app-link .app-kicker {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.app-link h3 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 590;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+.app-link p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.55;
 }
 
 /* ── CTA Footer ───────────────────────────────────────── */
@@ -290,28 +663,30 @@ body {
   padding: 120px 32px;
   text-align: center;
   border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 .cta-section h2 {
   font-family: var(--font-display);
   font-size: clamp(36px, 5vw, 56px);
-  font-weight: 500;
-  line-height: 1.12;
+  font-weight: 590;
+  line-height: 1.1;
   letter-spacing: -0.02em;
-  max-width: 700px;
-  margin: 0 auto 20px;
+  max-width: 640px;
+  margin: 0 auto 16px;
 }
 .cta-section p {
   font-size: 18px;
   color: var(--muted);
-  max-width: 480px;
+  max-width: 460px;
   margin: 0 auto 36px;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 /* ── Footer ───────────────────────────────────────────── */
 .footer {
   border-top: 1px solid var(--border);
   padding: 40px 32px;
+  background: var(--bg);
 }
 .footer-inner {
   max-width: var(--max-width);
@@ -328,87 +703,42 @@ body {
   list-style: none;
 }
 .footer-links a {
+  font-size: 13px;
   color: var(--muted);
   text-decoration: none;
+  letter-spacing: 0.01em;
   transition: color var(--ease);
 }
 .footer-links a:hover { color: var(--fg); }
 
-/* ── Section Headers ──────────────────────────────────── */
-.section-header {
-  margin-bottom: 8px;
-}
-.section-header h2 {
-  font-family: var(--font-display);
-  font-size: clamp(32px, 4.5vw, 48px);
-  font-weight: 500;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  margin-bottom: 12px;
-}
-.section-header p {
-  font-size: 17px;
-  color: var(--muted);
-  max-width: 540px;
-  line-height: 1.55;
-}
-
-/* ── App Screen Links ─────────────────────────────────── */
-.app-links {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 2px;
-  margin-top: 48px;
-}
-.app-link {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 36px 32px;
-  text-decoration: none;
-  color: var(--fg);
-  transition: border-color var(--ease);
-}
-.app-link:hover { border-color: var(--accent); }
-.app-link .app-kicker {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--accent);
-  margin-bottom: 12px;
-}
-.app-link h3 {
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 500;
-  margin-bottom: 8px;
-  letter-spacing: -0.01em;
-}
-.app-link p {
-  font-size: 14px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
 /* ── Responsive ───────────────────────────────────────── */
 @media (max-width: 860px) {
+  .nav-links, .nav-cta, .theme-toggle { display: none; }
+  .nav-mobile-toggle { display: flex; }
+  .section { padding: 64px 20px; }
+  .hero { padding: 64px 20px 48px; }
+  .hero h1 { font-size: 36px; }
   .steps { grid-template-columns: 1fr; }
   .features-grid { grid-template-columns: 1fr; }
-  .showcase-grid { grid-template-columns: repeat(2, 1fr); }
-  .app-links { grid-template-columns: repeat(2, 1fr); }
-  .nav-links { display: none; }
-  .section { padding: 64px 20px; }
-  .hero { padding: 80px 20px 64px; }
+  .showcase-grid { grid-template-columns: 1fr; }
+  .showcase-item { aspect-ratio: 16/9; }
+  .app-links { grid-template-columns: 1fr; }
+  .mock-panel-left { width: 200px; min-width: 200px; }
+  .mock-panel-right { grid-template-columns: 1fr 1fr; }
   .cta-section { padding: 80px 20px; }
+  .rhythm-break { padding: 0 20px; }
   .footer-inner { flex-direction: column; gap: 16px; text-align: center; }
   .footer-links { flex-wrap: wrap; justify-content: center; }
 }
 @media (max-width: 480px) {
-  .showcase-grid { grid-template-columns: 1fr 1fr; }
-  .hero h1 { font-size: 36px; }
-  .hero-visual { aspect-ratio: 4/3; }
+  .mock-workspace { flex-direction: column; height: auto; }
+  .mock-panel-left { width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border); }
+  .mock-panel-right { grid-template-columns: 1fr 1fr; padding: 12px; }
+  .showcase-grid { grid-template-columns: 1fr; }
+  .showcase-item { aspect-ratio: 4/3; }
+  .hero h1 { font-size: 30px; }
   .nav { padding: 0 16px; }
-  .step { padding: 32px 24px; }
+  .step { padding: 28px 24px; }
   .feature { padding: 28px 24px; }
 }
 </style>
@@ -417,31 +747,77 @@ body {
 
 <nav class="nav">
   <div class="nav-inner">
-    <a href="/" class="nav-wordmark">Image Studio</a>
+    <a href="/" class="nav-wordmark">
+      <span class="dot"></span>Image Studio
+    </a>
     <ul class="nav-links">
-      <li><a href="#how-it-works">How It Works</a></li>
-      <li><a href="#features">Features</a></li>
-      <li><a href="#showcase">Showcase</a></li>
-      <li><a href="#app">Try It</a></li>
-      <li><a href="/templates">Templates</a></li>
+      <li><a href="#how-it-works">運作方式</a></li>
+      <li><a href="#features">功能特色</a></li>
+      <li><a href="#showcase">作品展示</a></li>
+      <li><a href="#app">探索工具</a></li>
     </ul>
-    <a href="/studio" class="nav-cta">Open Studio</a>
+    <div class="nav-actions">
+      <button class="theme-toggle" id="theme-toggle" aria-label="切換主題">
+        <svg id="theme-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg id="theme-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <a href="/studio" class="nav-cta">開啟工作室</a>
+    </div>
+    <button class="nav-mobile-toggle" id="mobile-toggle" aria-label="選單">☰</button>
   </div>
 </nav>
 
+<div class="mobile-menu" id="mobile-menu">
+  <a href="#how-it-works">運作方式</a>
+  <a href="#features">功能特色</a>
+  <a href="#showcase">作品展示</a>
+  <a href="#app">探索工具</a>
+  <a href="/studio" class="mobile-cta">開啟工作室</a>
+</div>
+
 <section class="hero">
-  <div class="hero-tag">Powered by GPT Image 2</div>
-  <h1>Images that start with intent, not guesswork</h1>
-  <p class="hero-sub">Upload a reference, describe your vision, and let GPT Image 2 generate precisely what you imagined. Prompt memory keeps your best ideas within reach.</p>
-  <div class="hero-actions">
-    <a href="/studio" class="btn-primary">Try Image Studio</a>
-    <a href="#how-it-works" class="btn-outline">See how it works</a>
+  <div class="hero-tag">
+    <span class="pulse"></span>
+    Powered by GPT Image 2
   </div>
+  <h1>描述畫面，精準生成</h1>
+  <p class="hero-sub">上傳參考圖、用日常語言描述，GPT Image 2 為你生成精確的圖像。提示詞記憶讓每次靈感都留在手邊。</p>
+  <div class="hero-actions">
+    <a href="/studio" class="btn-primary">開始生成圖片 <kbd>⌘</kbd><kbd>⏎</kbd></a>
+    <a href="#how-it-works" class="btn-outline">了解運作方式</a>
+  </div>
+
   <div class="hero-visual">
-    <div class="hero-visual-grid">
-      <div class="cell"></div><div class="cell"></div><div class="cell"></div>
-      <div class="cell"></div><div class="cell"></div><div class="cell"></div>
-      <div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    <div class="mock-topbar">
+      <div class="mock-topbar-left">
+        <span class="mock-dot"></span>
+        <span class="mock-wordmark">Image Studio</span>
+      </div>
+      <div class="mock-topbar-right">
+        <span class="mock-pill active">Studio</span>
+        <span class="mock-pill">Gallery</span>
+        <span class="mock-pill">History</span>
+      </div>
+    </div>
+    <div class="mock-workspace">
+      <div class="mock-panel-left">
+        <div class="mock-input">上傳參考圖片</div>
+        <div class="mock-textarea">描述你想要創作的畫面…</div>
+        <div class="mock-controls">
+          <span class="mock-select">Medium<span style="font-size:9px">▾</span></span>
+          <span class="mock-select">1024×1024<span style="font-size:9px">▾</span></span>
+          <span class="mock-select">1<span style="font-size:9px">▾</span></span>
+        </div>
+        <div class="mock-btn accent">產生圖片</div>
+      </div>
+      <div class="mock-panel-right">
+        <div class="mock-img"><img src="/static/image-gpt-image-2-mqazcf6f.png" alt="" style="width:100%;height:100%;object-fit:cover;display:block" /><span class="mock-img-tag">gen</span></div>
+        <div class="mock-img"><img src="/static/image-gpt-image-2-mqazhonq.png" alt="" style="width:100%;height:100%;object-fit:cover;display:block" /><span class="mock-img-tag">gen</span></div>
+        <div class="mock-img"><img src="/static/image-gpt-image-2-mqazmthh.png" alt="" style="width:100%;height:100%;object-fit:cover;display:block" /><span class="mock-img-tag">gen</span></div>
+        <div class="mock-img"><img src="/static/image-gpt-image-2-mqazqxjy.png" alt="" style="width:100%;height:100%;object-fit:cover;display:block" /><span class="mock-img-tag">gen</span></div>
+        <div class="mock-img"><img src="/static/image-gpt-image-2-mqazcf6f.png" alt="" style="width:100%;height:100%;object-fit:cover;display:block" /><span class="mock-img-tag">gen</span></div>
+        <div class="mock-img"><img src="/static/image-gpt-image-2-mqazhonq.png" alt="" style="width:100%;height:100%;object-fit:cover;display:block" /><span class="mock-img-tag">gen</span></div>
+      </div>
     </div>
   </div>
 </section>
@@ -449,25 +825,25 @@ body {
 <section class="section" id="how-it-works">
   <div class="section-inner">
     <div class="section-header">
-      <div class="section-label">How It Works</div>
-      <h2>Three steps from idea to image</h2>
-      <p>No prompt engineering required. Drop in a reference, describe what you want, and let the model do the heavy lifting.</p>
+      <div class="section-label">運作方式</div>
+      <h2>三個步驟，從想法到圖片</h2>
+      <p>不需要提示詞工程。丟進參考圖、描述你想要的，讓模型為你完成剩下的工作。</p>
     </div>
     <div class="steps">
-      <div class="step">
+      <div class="step" data-od-id="step-upload">
         <div class="step-num">01</div>
-        <h3>Upload a reference</h3>
-        <p>Drop a photo, sketch, or style reference. GPT-4o Vision analyzes it and folds the visual context into your prompt automatically.</p>
+        <h3>上傳參考圖</h3>
+        <p>拖入照片、草圖或風格參考。GPT-4o Vision 自動分析視覺元素，將風格脈絡融入你的提示詞中。</p>
       </div>
-      <div class="step">
+      <div class="step" data-od-id="step-describe">
         <div class="step-num">02</div>
-        <h3>Describe your vision</h3>
-        <p>Write what you want in plain language. Hit "Translate &amp; Enhance" and GPT-4o rewrites it into a detailed, model-optimized prompt.</p>
+        <h3>描述你的想法</h3>
+        <p>用日常語言寫下你想要的畫面。點擊「翻譯與強化」，GPT-4o 會將它改寫成模型最佳化的詳細提示詞。</p>
       </div>
-      <div class="step">
+      <div class="step" data-od-id="step-generate">
         <div class="step-num">03</div>
-        <h3>Generate &amp; refine</h3>
-        <p>Choose quality, size, and count. Generate multiple variations at once. Download, copy prompts, and iterate from history.</p>
+        <h3>生成與迭代</h3>
+        <p>選擇品質、尺寸和數量。一次生成多個變體。下載、複製提示詞，從歷史記錄中繼續迭代。</p>
       </div>
     </div>
   </div>
@@ -476,51 +852,67 @@ body {
 <section class="section" id="features">
   <div class="section-inner">
     <div class="section-header">
-      <div class="section-label">Features</div>
-      <h2>Built for people who generate a lot of images</h2>
-      <p>Not a toy. Real controls, persistent history, and tooling for iteration at speed.</p>
+      <div class="section-label">功能特色</div>
+      <h2>為大量生成圖片的人而設計</h2>
+      <p>不是玩具。真實的控制項、持久化的歷史記錄、快速迭代的工具鏈。</p>
     </div>
     <div class="features-grid">
-      <div class="feature">
-        <div class="feature-kicker">Context-aware</div>
-        <h3>Reference image upload</h3>
-        <p>Drop a JPEG, PNG, or WebP and GPT-4o Vision reads the style, composition, and palette before enhancing your prompt. No more guessing at style tokens.</p>
+      <div class="feature" data-od-id="feature-reference">
+        <div class="feature-kicker">情境感知</div>
+        <h3>參考圖片上傳</h3>
+        <p>拖入 JPEG、PNG 或 WebP，GPT-4o Vision 會在強化提示詞之前讀取風格、構圖和色調。不再需要猜測風格關鍵字。</p>
       </div>
-      <div class="feature">
-        <div class="feature-kicker">Prompt engineering, automated</div>
-        <h3>GPT-4o prompt translation</h3>
-        <p>Write casually. One click runs your prompt through GPT-4o, which expands it into the kind of detailed, structured description that GPT Image 2 responds to best.</p>
+      <div class="feature" data-od-id="feature-enhance">
+        <div class="feature-kicker">提示詞工程，自動化</div>
+        <h3>GPT-4o 提示詞翻譯</h3>
+        <p>隨手寫下想法。一鍵將提示詞交給 GPT-4o，它會展開成 GPT Image 2 最能理解的詳細結構化描述。</p>
       </div>
-      <div class="feature">
-        <div class="feature-kicker">Full control</div>
-        <h3>Quality, size &amp; count</h3>
-        <p>Low, medium, or high quality. Sizes from 1024&times;1024 up to 2048&times;2048. Generate 1&ndash;4 variations per run. Every parameter is exposed.</p>
+      <div class="feature" data-od-id="feature-control">
+        <div class="feature-kicker">完整控制</div>
+        <h3>品質、尺寸與數量</h3>
+        <p>低、中、高三種品質。尺寸從 1024×1024 到 2048×2048。每次生成 1–4 個變體。所有參數完全透明。</p>
       </div>
-      <div class="feature">
-        <div class="feature-kicker">Never lose a good prompt</div>
-        <h3>Persistent prompt memory</h3>
-        <p>Every generation is saved to SQLite with the original prompt, revised prompt, parameters, and result. Search, restore, and iterate from anything in your history.</p>
+      <div class="feature" data-od-id="feature-memory">
+        <div class="feature-kicker">不再遺失好提示詞</div>
+        <h3>持久化提示詞記憶</h3>
+        <p>每次生成都儲存到 SQLite，包含原始提示詞、改寫版本、參數和結果。搜尋、恢復、從歷史中的任何記錄繼續迭代。</p>
       </div>
     </div>
   </div>
 </section>
 
+<div class="rhythm-break" data-od-id="rhythm-break">
+  <div class="rhythm-break-line"></div>
+</div>
+
 <section class="section" id="showcase">
   <div class="section-inner">
     <div class="section-header">
-      <div class="section-label">Showcase</div>
-      <h2>What GPT Image 2 can do</h2>
-      <p>From photorealistic renders to stylized illustrations &mdash; the model handles a wide range with a single prompt.</p>
+      <div class="section-label">作品展示</div>
+      <h2>GPT Image 2 的能力範圍</h2>
+      <p>從照片級寫實渲染到風格化插圖，模型只需一段提示詞就能橫跨多種風格。</p>
     </div>
     <div class="showcase-grid">
-      <div class="showcase-item"><div class="swatch" style="background:oklch(55% 0.14 25)"></div></div>
-      <div class="showcase-item"><div class="swatch" style="background:oklch(60% 0.12 200)"></div></div>
-      <div class="showcase-item"><div class="swatch" style="background:oklch(50% 0.10 160)"></div></div>
-      <div class="showcase-item"><div class="swatch" style="background:oklch(65% 0.15 50)"></div></div>
-      <div class="showcase-item"><div class="swatch" style="background:oklch(45% 0.08 280)"></div></div>
-      <div class="showcase-item"><div class="swatch" style="background:oklch(58% 0.13 100)"></div></div>
-      <div class="showcase-item"><div class="swatch" style="background:oklch(52% 0.11 320)"></div></div>
-      <div class="showcase-item"><div class="swatch" style="background:oklch(62% 0.14 10)"></div></div>
+      <div class="showcase-item" data-od-id="showcase-landscape">
+        <img class="artwork" src="/static/image-gpt-image-2-mqazcf6f.png" alt="AI 生成的山水風景——金色時刻的高山湖泊" loading="lazy" />
+        <span class="swatch-label">風景寫實</span>
+        <span class="swatch-sub">photorealistic</span>
+      </div>
+      <div class="showcase-item" data-od-id="showcase-abstract">
+        <img class="artwork" src="/static/image-gpt-image-2-mqazhonq.png" alt="AI 生成的抽象流體藝術——流動的色彩紋理" loading="lazy" />
+        <span class="swatch-label">抽象流體</span>
+        <span class="swatch-sub">abstract fluid</span>
+      </div>
+      <div class="showcase-item" data-od-id="showcase-product">
+        <img class="artwork" src="/static/image-gpt-image-2-mqazmthh.png" alt="AI 生成的產品靜物攝影——北歐風格陶瓷花瓶" loading="lazy" />
+        <span class="swatch-label">產品靜物</span>
+        <span class="swatch-sub">still life</span>
+      </div>
+      <div class="showcase-item" data-od-id="showcase-cyberpunk">
+        <img class="artwork" src="/static/image-gpt-image-2-mqazqxjy.png" alt="AI 生成的賽博龐克城市夜景——霓虹雨夜街景" loading="lazy" />
+        <span class="swatch-label">賽博城市</span>
+        <span class="swatch-sub">cyberpunk</span>
+      </div>
     </div>
   </div>
 </section>
@@ -528,53 +920,100 @@ body {
 <section class="section" id="app">
   <div class="section-inner">
     <div class="section-header">
-      <div class="section-label">Product</div>
-      <h2>See the studio in action</h2>
-      <p>Explore the core surfaces of Image Studio &mdash; each designed for a specific part of the creative workflow.</p>
+      <div class="section-label">產品介面</div>
+      <h2>探索工作室的核心功能</h2>
+      <p>Image Studio 的三個核心介面——每一個都為創作流程中的特定階段而設計。</p>
     </div>
     <div class="app-links">
-      <a href="/studio" class="app-link">
-        <div class="app-kicker">Screen 01</div>
-        <h3>Studio Workspace</h3>
-        <p>The main generation interface &mdash; upload, prompt, configure, and generate in one view.</p>
+      <a href="/studio" class="app-link" data-od-id="app-studio">
+        <div class="app-kicker">介面 01</div>
+        <h3>工作室</h3>
+        <p>主要的生成介面——上傳、提示、設定、生成，在同一個視圖中完成所有操作。</p>
       </a>
-      <a href="/gallery" class="app-link">
-        <div class="app-kicker">Screen 02</div>
-        <h3>Image Gallery</h3>
-        <p>Browse, inspect, and download your generated images. Copy prompts from any result.</p>
+      <a href="/gallery" class="app-link" data-od-id="app-gallery">
+        <div class="app-kicker">介面 02</div>
+        <h3>圖片畫廊</h3>
+        <p>瀏覽、檢視和下載你生成的圖片。從任何結果複製提示詞，或用作變體生成的參考圖。</p>
       </a>
-      <a href="/history-view" class="app-link">
-        <div class="app-kicker">Screen 03</div>
-        <h3>Prompt History</h3>
-        <p>Every generation saved. Restore any past prompt and its reference image to pick up where you left off.</p>
-      </a>
-      <a href="/templates" class="app-link">
-        <div class="app-kicker">Tool</div>
-        <h3>Prompt Templates</h3>
-        <p>A library of 21 ready-made prompt templates for UI, branding, photography, illustration, and more.</p>
+      <a href="/history-view" class="app-link" data-od-id="app-history">
+        <div class="app-kicker">介面 03</div>
+        <h3>提示詞歷史</h3>
+        <p>每一次生成都被保存。恢復任何過去的提示詞和參考圖，從上次中斷的地方繼續。</p>
       </a>
     </div>
   </div>
 </section>
 
-<section class="cta-section">
-  <h2>Ready to generate with intent?</h2>
-  <p>Image Studio is free and open source. Bring your own OpenAI API key and start generating in seconds.</p>
-  <a href="/studio" class="btn-primary">Open Image Studio</a>
+<section class="cta-section" data-od-id="cta">
+  <h2>準備好用意圖驅動的生成？</h2>
+  <p>Image Studio 是免費的開源工具。帶上你的 OpenAI API 金鑰，幾秒內就能開始生成。</p>
+  <a href="/studio" class="btn-primary">開啟 Image Studio</a>
 </section>
 
 <footer class="footer">
   <div class="footer-inner">
-    <span>Image Studio &mdash; Powered by GPT Image 2</span>
+    <span>Image Studio — 由 GPT Image 2 驅動 &middot; <a href="https://github.com" style="color:var(--muted);text-decoration:underline;text-underline-offset:3px">開放原始碼</a></span>
     <ul class="footer-links">
-      <li><a href="#how-it-works">How It Works</a></li>
-      <li><a href="#features">Features</a></li>
-      <li><a href="#showcase">Showcase</a></li>
-      <li><a href="/templates">Templates</a></li>
-      <li><a href="/studio">Open Studio</a></li>
+      <li><a href="#how-it-works">運作方式</a></li>
+      <li><a href="#features">功能特色</a></li>
+      <li><a href="#showcase">作品展示</a></li>
+      <li><a href="/studio">開啟工作室</a></li>
     </ul>
   </div>
 </footer>
 
+<script>
+// Theme toggle
+const html = document.documentElement;
+const toggle = document.getElementById('theme-toggle');
+const iconSun = document.getElementById('theme-icon-sun');
+const iconMoon = document.getElementById('theme-icon-moon');
+
+function loadTheme() {
+  const saved = localStorage.getItem('image-studio-theme');
+  if (saved === 'light' || saved === 'dark') {
+    html.setAttribute('data-theme', saved);
+  }
+  updateIcon();
+}
+function updateIcon() {
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  iconSun.style.display = isDark ? '' : 'none';
+  iconMoon.style.display = isDark ? 'none' : '';
+}
+toggle.addEventListener('click', () => {
+  const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('image-studio-theme', next);
+  updateIcon();
+});
+
+// Mobile menu
+const mobileToggle = document.getElementById('mobile-toggle');
+const mobileMenu = document.getElementById('mobile-menu');
+mobileToggle.addEventListener('click', () => {
+  mobileMenu.classList.toggle('open');
+  mobileToggle.textContent = mobileMenu.classList.contains('open') ? '✕' : '☰';
+});
+mobileMenu.querySelectorAll('a').forEach(link => {
+  link.addEventListener('click', () => {
+    mobileMenu.classList.remove('open');
+    mobileToggle.textContent = '☰';
+  });
+});
+
+// Smooth scroll for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  anchor.addEventListener('click', function(e) {
+    e.preventDefault();
+    const target = document.querySelector(this.getAttribute('href'));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+
+loadTheme();
+</script>
 </body>
 </html>
