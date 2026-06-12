@@ -20,4 +20,13 @@ if [ -z "$OPENAI_API_KEY" ]; then
 fi
 
 echo "🚀 啟動 Image Studio http://localhost:5001"
+
+# 釋放被佔用的 port 5001
+PID=$(lsof -ti :5001)
+if [ -n "$PID" ]; then
+    echo "⚠️  Port 5001 被佔用 (PID $PID)，正在釋放…"
+    kill $PID
+    sleep 1
+fi
+
 python3 app.py
