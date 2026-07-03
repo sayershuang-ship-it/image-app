@@ -488,7 +488,11 @@ function getFilteredImages() {
   return state.images;
 }
 
-function getImageSrc(img) {
+function getThumbSrc(img) {
+  if (img.url && img.url.startsWith('data:')) return img.url;
+  return '/api/thumb/' + img.id;
+}
+function getFullSrc(img) {
   if (img.url && img.url.startsWith('data:')) return img.url;
   if (img.url && (img.url.startsWith('http://') || img.url.startsWith('https://'))) return img.url;
   return '/download/' + img.id;
@@ -505,7 +509,7 @@ function renderGallery() {
 
   $('#gallery-grid').innerHTML = filtered.map(img => `
     <div class="gallery-card${state.selected.has(img.id) ? ' selected' : ''}" data-id="${img.id}">
-      <img src="${getImageSrc(img)}" alt="${escHtml(img.label)}" loading="lazy" onerror="this.parentElement.style.display='none'" />
+      <img src="${getThumbSrc(img)}" alt="${escHtml(img.label)}" loading="lazy" onerror="this.parentElement.style.display='none'" />
       ${img.starred ? '<span class="card-star-badge">&#9733;</span>' : ''}
       <div class="card-overlay">
         <span class="card-meta">${escHtml(img.label)} &middot; ${img.quality}</span>
@@ -542,7 +546,7 @@ function openDetail(id) {
   currentDetail = state.images.find(img => img.id === id);
   if (!currentDetail) return;
 
-  $('#modal-img').src = getImageSrc(currentDetail);
+  $('#modal-img').src = getFullSrc(currentDetail);
   $('#modal-img').alt = currentDetail.label;
   $('#modal-title').textContent = currentDetail.label;
   $('#modal-quality').textContent = currentDetail.quality;
