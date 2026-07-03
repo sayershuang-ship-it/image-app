@@ -7,7 +7,7 @@ AI 生圖提示詞管理工具。收錄社群優質提示詞並整理分類，�
 - **後端：** Python / Flask
 - **資料庫：** SQLite（prompts.db，含 prompts 與 community_prompts 兩表）
 - **前端：** 5 個 Jinja 模板（index 首頁、studio 生成器、gallery 畫廊、history 歷史、templates 提示詞庫）
-- **生成模型：** OpenAI gpt-image-2 / gpt-4o
+- **生成模型：** OpenAI gpt-image-2 / gpt-4o、Google gemini-3.1-flash-lite-image
 
 ## 目錄結構
 
@@ -46,6 +46,7 @@ image-app/
 | `/api/v1/generate` | REST API 生成 |
 | `/api/search-prompts` | 提示詞搜尋 |
 | `/api/stats` | 統計資訊 |
+| `/api/models` | 模型清單（含價格表） |
 | `/history` | JSON 歷史列表 |
 | `/export-zip` | 匯出 ZIP |
 | `/health` | 健康檢查 |
@@ -57,6 +58,8 @@ cd ~/projects/image-app
 ./start.sh
 # 或手動：
 OPENAI_API_KEY=sk-... venv/bin/python app.py
+# 使用 Gemini 生成時，再設定選用的 GOOGLE_API_KEY（環境變數或寫入 ~/.image-studio.env）
+GOOGLE_API_KEY=... venv/bin/python app.py
 # → http://localhost:5001
 ```
 
