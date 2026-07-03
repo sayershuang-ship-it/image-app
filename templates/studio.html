@@ -611,9 +611,7 @@ const state = {
   sessionCost: 0,
   starredIds: new Set(),
 };
-
-const $ = (sel) => document.querySelector(sel);
-
+/* $ in static/app.js */
 const uploadZone     = $('#upload-zone');
 const fileInput      = $('#file-input');
 const promptInput    = $('#prompt-input');
@@ -828,14 +826,7 @@ async function submitKey() {
   } catch (e) { toast('Failed to set key', 'error'); }
 }
 
-function toast(msg, type) {
-  type = type || '';
-  const el = document.createElement('div');
-  el.className = 'toast ' + type;
-  el.textContent = msg;
-  toastContainer.appendChild(el);
-  setTimeout(() => { el.remove(); }, 4000);
-}
+/* toast + helpers in static/app.js */
 
 function updateButtons() {
   const hasPrompt = promptInput.value.trim().length > 0;
@@ -973,9 +964,7 @@ async function doEnhance() {
 
 generateBtn.addEventListener('click', () => state.mode === 'batch' ? doBatchGenerate() : doGenerate());
 batchInput.addEventListener('input', updateButtons);
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
+/* sleep in static/app.js */
 function showGeneratingProgress(startTime) {
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
   galleryGrid.innerHTML = `
@@ -988,21 +977,12 @@ function showGeneratingProgress(startTime) {
   gallerySub.style.display = 'none';
 }
 
-async function pollJob(jobId, startTime) {
-  const INTERVAL = 1500;
-  const TIMEOUT  = 180_000;
-  while (Date.now() - startTime < TIMEOUT) {
-    await sleep(INTERVAL);
+// ── Poll wrapper ──────────────────────────────────────────
+function pollWithElapsed(jobId, startTime) {
+  return pollJob(jobId, startTime, (elapsed) => {
     const el = document.getElementById('gen-elapsed');
-    if (el) el.textContent = Math.floor((Date.now() - startTime) / 1000) + 's';
-
-    const r = await fetch(`/job-status/${jobId}`);
-    if (!r.ok) throw new Error('Lost contact with server');
-    const d = await r.json();
-    if (d.status === 'done')   return d.results;
-    if (d.status === 'failed') throw new Error(d.error || 'Generation failed');
-  }
-  throw new Error('Generation timed out (3 min)');
+    if (el) el.textContent = elapsed + 's';
+  });
 }
 
 async function doGenerate() {
@@ -1019,7 +999,7 @@ async function doGenerate() {
     const r = await fetch('/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Failed to start generation');
-    const results = await pollJob(d.job_id, startTime);
+    const results = await pollWithElapsed(d.job_id, startTime);
     const cost = results.reduce((s, x) => s + (x.cost_usd || 0), 0);
     state.sessionCost += cost;
     state.gallery = [...results, ...state.gallery];
@@ -1191,9 +1171,7 @@ async function useAsReference(url, revisedPrompt) {
     toast('Could not load image as reference', 'error');
   }
 }
-
-function escHtml(s) { const el = document.createElement('span'); el.textContent = s; return el.innerHTML; }
-function escAttr(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+/* escHtml / escAttr in static/app.js */
 
 init();
 </script>

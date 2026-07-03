@@ -467,27 +467,7 @@ const state = {
   selected: new Set(),
 };
 
-const $ = s => document.querySelector(s);
-
-function toast(msg) {
-  const el = document.createElement('div');
-  el.className = 'toast success';
-  el.textContent = msg;
-  $('#toast-container').appendChild(el);
-  setTimeout(() => el.remove(), 4000);
-}
-
-function escHtml(s) {
-  const el = document.createElement('span');
-  el.textContent = s || '';
-  return el.innerHTML;
-}
-
-function parseTs(s) {
-  if (!s) return new Date();
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return new Date(s.replace(' ', 'T') + 'Z');
-  return new Date(s);
-}
+/* Helpers in static/app.js */
 
 /* ── Data ─────────────────────────────────────── */
 
@@ -611,7 +591,7 @@ async function toggleStarEntry(id, btn) {
     if (entry) entry.starred = d.starred;
     btn.classList.toggle('starred', d.starred);
     toast(d.starred ? 'Starred' : 'Unstarred');
-  } catch (_) { toast('Failed to update star'); }
+  } catch (_) { toast('Failed to update star', 'error'); }
 }
 
 /* ── Detail Sidebar ──────────────────────────────── */
@@ -664,7 +644,7 @@ $('#detail-copy').addEventListener('click', () => {
   const entry = state.entries.find(e => e.id === state.detailId);
   if (!entry) return;
   const text = entry.revised || entry.prompt;
-  navigator.clipboard.writeText(text).then(() => toast('Prompt copied')).catch(() => toast('Failed to copy'));
+  navigator.clipboard.writeText(text).then(() => toast('Prompt copied')).catch(() => toast('Failed to copy', 'error'));
 });
 
 $('#detail-delete').addEventListener('click', () => {
@@ -688,7 +668,7 @@ async function deleteEntry(id) {
     renderHistory();
     toast('Entry deleted');
   } catch (e) {
-    toast('Delete failed');
+    toast('Delete failed', 'error');
   }
 }
 
@@ -698,24 +678,13 @@ $('#export-zip-btn').addEventListener('click', async () => {
   try {
     $('#export-zip-btn').textContent = 'Preparing…';
     $('#export-zip-btn').disabled = true;
-    const r = await fetch('/export-zip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids })
-    });
-    if (!r.ok) throw new Error('Export failed');
-    const blob = await r.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `image-studio-export-${Date.now()}.zip`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    await exportZip(ids);
     toast(`Exported ${ids.length} image(s)`);
     state.selected.clear();
     renderHistory();
     $('#export-zip-btn').style.display = 'none';
   } catch (e) {
-    toast('Export failed: ' + e.message);
+    toast('Export failed: ' + e.message, 'error');
   } finally {
     $('#export-zip-btn').disabled = false;
     if (state.selected.size) {

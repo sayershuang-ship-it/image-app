@@ -293,8 +293,7 @@
 
 {% block page_js %}
 <script>
-function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function escAttr(s) { return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+/* escHtml / escAttr in static/app.js */
 
 const TEMPLATES = {
   'Design & Info': {
@@ -623,19 +622,8 @@ async function enhancePrompt() {
   } catch(e) { setStatus(e.message, true); }
 }
 
-async function pollJob(jobId) {
-  const start = Date.now();
-  while (Date.now() - start < 180_000) {
-    await new Promise(r => setTimeout(r, 1500));
-    const elapsed = Math.floor((Date.now() - start) / 1000);
-    setStatus(`Generating... ${elapsed}s`);
-    const r = await fetch(`/job-status/${jobId}`);
-    if (!r.ok) throw new Error('Lost contact with server');
-    const d = await r.json();
-    if (d.status === 'done') return d.results;
-    if (d.status === 'failed') throw new Error(d.error || 'Generation failed');
-  }
-  throw new Error('Generation timed out (3 min)');
+function pollWithStatus(jobId) {
+  return pollJob(jobId, Date.now(), (elapsed) => setStatus(`Generating... ${elapsed}s`));
 }
 
 async function generateImage() {
@@ -661,7 +649,7 @@ async function generateImage() {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    const results = await pollJob(data.job_id);
+    const results = await pollWithStatus(data.job_id);
     if (results && results.length > 0) {
       // Render all results; download/copy targets the first image
       const r = results[0];
