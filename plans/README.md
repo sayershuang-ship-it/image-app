@@ -28,8 +28,8 @@ your row when done.
 | 013 | History: restore carries reference image via pid; Clear All truly clears | P2 | M | 006 | DONE |
 | 014 | Parse SQLite UTC timestamps correctly in gallery/history (display + filters) | P2 | S | 006 | DONE |
 | 015 | Tests: Gemini provider path, model validation, job lifecycle (all mocked) | P2 | M | 009, (012) | DONE |
-| 016 | Consolidate duplicated page JS into static/app.js | P3 | M | 007, 008, 011, 013, 014 | TODO |
-| 017 | Small-fix bundle: /health contract, FTS 500s, SET_KEY_SECRET exposure, n>1 display | P3 | S | 006, (012 for Fix C) | TODO |
+| 016 | Consolidate duplicated page JS into static/app.js | P3 | M | 007, 008, 011, 013, 014 | DONE |
+| 017 | Small-fix bundle: /health contract, FTS 500s, SET_KEY_SECRET exposure, n>1 display | P3 | S | 006, (012 for Fix C) | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
