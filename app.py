@@ -454,7 +454,7 @@ def _generate_gemini(job_id: str, prompt: str, image_b64: str,
         image_config=genai_types.ImageConfig(aspect_ratio=aspect_ratio),
     )
 
-    cost = calc_cost(model, "standard", size, n)
+    unit_cost = calc_cost(model, "standard", size, 1)
     results = []
     for i in range(n):
         response = client.models.generate_content(
@@ -473,9 +473,9 @@ def _generate_gemini(job_id: str, prompt: str, image_b64: str,
                     pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
                                       None, "standard", size, model,
                                       None, b64, True,
-                                      original_prompt=original_prompt or None, cost_usd=cost)
+                                      original_prompt=original_prompt or None, cost_usd=unit_cost)
                     results.append({"url": data_url, "revised_prompt": None,
-                                     "cost_usd": cost, "pid": pid})
+                                     "cost_usd": unit_cost, "pid": pid})
 
     with _jobs_lock:
         _jobs[job_id]["status"] = "done"
@@ -521,7 +521,7 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
         else:
             response = client.images.generate(**kwargs)
 
-        cost = calc_cost(model, quality, size, n)
+        unit_cost = calc_cost(model, quality, size, 1)
         results = []
         for item in response.data:
             if item.url:
@@ -534,17 +534,17 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
                 data_url = f"data:image/png;base64,{raw_b64}" if raw_b64 else item.url
                 pid = save_prompt(prompt, image_b64, item.revised_prompt, quality, size,
                                   model, item.url, raw_b64, True,
-                                  original_prompt=original_prompt or None, cost_usd=cost)
+                                  original_prompt=original_prompt or None, cost_usd=unit_cost)
                 results.append({"url": data_url, "revised_prompt": item.revised_prompt,
-                                 "cost_usd": cost, "pid": pid})
+                                 "cost_usd": unit_cost, "pid": pid})
             elif item.b64_json:
                 data_url = f"data:image/png;base64,{item.b64_json}"
                 pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
                                   item.revised_prompt, quality, size,
                                   model, None, item.b64_json, True,
-                                  original_prompt=original_prompt or None, cost_usd=cost)
+                                  original_prompt=original_prompt or None, cost_usd=unit_cost)
                 results.append({"url": data_url, "revised_prompt": item.revised_prompt,
-                                 "cost_usd": cost, "pid": pid})
+                                 "cost_usd": unit_cost, "pid": pid})
 
         with _jobs_lock:
             _jobs[job_id]["status"] = "done"

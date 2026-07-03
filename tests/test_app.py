@@ -138,3 +138,33 @@ def test_fb_pages_shape(client):
         assert "error" in rv.get_json()
     finally:
         app_module.FB_PAGE_TOKEN_FILE = old
+
+
+def test_per_image_cost_recorded(client):
+    """Each generated image row stores per-image cost, not batch total."""
+    small_png = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+        "+P+/HgAF3wIM4+Rc7AAAAABJRU5ErkJggg=="
+    )
+    item = MagicMock(url=None, b64_json=small_png, revised_prompt=None)
+    fake_resp = MagicMock(data=[item, item])  # n=2
+
+    with patch("app.get_client") as gc:
+        gc.return_value.images.generate.return_value = fake_resp
+        app_module._jobs["j1"] = {"status": "running", "created_at": 0}
+        app_module._run_generation("j1", "p", "", "medium", "1024x1024", 2, "gpt-image-2")
+
+    per_image = app_module.calc_cost("gpt-image-2", "medium", "1024x1024", 1)
+    batch_total = app_module.calc_cost("gpt-image-2", "medium", "1024x1024", 2)
+
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        rows = conn.execute("SELECT cost_usd FROM prompts ORDER BY id").fetchall()
+    assert len(rows) == 2
+    for r in rows:
+        assert abs(r[0] - per_image) < 1e-6, f"expected per-image {per_image}, got {r[0]}"
+
+    results = app_module._jobs["j1"]["results"]
+    assert len(results) == 2
+    for res in results:
+        assert abs(res["cost_usd"] - per_image) < 1e-6
+    assert abs(sum(r["cost_usd"] for r in results) - batch_total) < 1e-6
