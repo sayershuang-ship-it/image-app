@@ -516,73 +516,83 @@ def _finalize_job_failure(job_id: str, prompt: str, image_b64: str, quality: str
         _jobs[job_id]["error"] = str(exc)
 
 
+def _generate_openai(prompt: str, image_b64: str, quality: str,
+                     size: str, n: int, model: str,
+                     original_prompt: str = "") -> list:
+    """Run OpenAI image generation and return a list of result dicts."""
+    client = get_client()
+    kwargs = dict(model=model, prompt=prompt, n=n,
+                  quality=quality, size=size)
+
+    if image_b64:
+        img_bytes = base64.b64decode(image_b64)
+        img = Image.open(io.BytesIO(img_bytes))
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        w, h = img.size
+        if w > 2048 or h > 2048:
+            ratio = min(2048 / w, 2048 / h)
+            img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+        buf.name = 'reference.png'
+        kwargs["image"] = buf
+        edit_sizes = {'256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'}
+        if size not in edit_sizes:
+            kwargs["size"] = 'auto'
+        response = client.images.edit(**kwargs)
+    else:
+        response = client.images.generate(**kwargs)
+
+    unit_cost = calc_cost(model, quality, size, 1)
+    results = []
+    for item in response.data:
+        if item.url:
+            try:
+                import urllib.request
+                with urllib.request.urlopen(item.url) as resp:
+                    raw_b64 = base64.b64encode(resp.read()).decode()
+            except Exception:
+                raw_b64 = None
+            data_url = f"data:image/png;base64,{raw_b64}" if raw_b64 else item.url
+            pid = save_prompt(prompt, image_b64, item.revised_prompt, quality, size,
+                              model, item.url, raw_b64, True,
+                              original_prompt=original_prompt or None, cost_usd=unit_cost)
+            results.append({"url": data_url, "revised_prompt": item.revised_prompt,
+                             "cost_usd": unit_cost, "pid": pid})
+        elif item.b64_json:
+            data_url = f"data:image/png;base64,{item.b64_json}"
+            pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
+                              item.revised_prompt, quality, size,
+                              model, None, item.b64_json, True,
+                              original_prompt=original_prompt or None, cost_usd=unit_cost)
+            results.append({"url": data_url, "revised_prompt": item.revised_prompt,
+                             "cost_usd": unit_cost, "pid": pid})
+
+    return results
+
+
+_PROVIDERS = {
+    "openai": _generate_openai,
+    "google": _generate_gemini,
+}
+
+
 def _run_generation(job_id: str, prompt: str, image_b64: str,
                     quality: str, size: str, n: int, model: str,
                     original_prompt: str = "") -> None:
     """Run image generation in a background thread and store result in _jobs."""
     model_config = _MODELS.get(model, _MODELS["gpt-image-2"])
     provider = model_config["provider"]
+    generate_fn = _PROVIDERS.get(provider)
 
     try:
-        if provider == "google":
-            results = _generate_gemini(prompt, image_b64, quality, size, n, model,
-                                       original_prompt=original_prompt)
-            _finalize_job_success(job_id, results)
-            return
-
-        # ── OpenAI path ──────────────────────────────────────────────────────────
-        client = get_client()
-        kwargs = dict(model=model, prompt=prompt, n=n,
-                      quality=quality, size=size)
-
-        if image_b64:
-            img_bytes = base64.b64decode(image_b64)
-            img = Image.open(io.BytesIO(img_bytes))
-            if img.mode in ('RGBA', 'P'):
-                img = img.convert('RGB')
-            w, h = img.size
-            if w > 2048 or h > 2048:
-                ratio = min(2048 / w, 2048 / h)
-                img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            buf.seek(0)
-            buf.name = 'reference.png'
-            kwargs["image"] = buf
-            edit_sizes = {'256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'}
-            if size not in edit_sizes:
-                kwargs["size"] = 'auto'
-            response = client.images.edit(**kwargs)
-        else:
-            response = client.images.generate(**kwargs)
-
-        unit_cost = calc_cost(model, quality, size, 1)
-        results = []
-        for item in response.data:
-            if item.url:
-                try:
-                    import urllib.request
-                    with urllib.request.urlopen(item.url) as resp:
-                        raw_b64 = base64.b64encode(resp.read()).decode()
-                except Exception:
-                    raw_b64 = None
-                data_url = f"data:image/png;base64,{raw_b64}" if raw_b64 else item.url
-                pid = save_prompt(prompt, image_b64, item.revised_prompt, quality, size,
-                                  model, item.url, raw_b64, True,
-                                  original_prompt=original_prompt or None, cost_usd=unit_cost)
-                results.append({"url": data_url, "revised_prompt": item.revised_prompt,
-                                 "cost_usd": unit_cost, "pid": pid})
-            elif item.b64_json:
-                data_url = f"data:image/png;base64,{item.b64_json}"
-                pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
-                                  item.revised_prompt, quality, size,
-                                  model, None, item.b64_json, True,
-                                  original_prompt=original_prompt or None, cost_usd=unit_cost)
-                results.append({"url": data_url, "revised_prompt": item.revised_prompt,
-                                 "cost_usd": unit_cost, "pid": pid})
-
+        if generate_fn is None:
+            raise Exception(f"No provider registered for: {provider}")
+        results = generate_fn(prompt, image_b64, quality, size, n, model,
+                             original_prompt=original_prompt)
         _finalize_job_success(job_id, results)
-
     except Exception as exc:
         _finalize_job_failure(job_id, prompt, image_b64, quality, size, model, exc)
 
