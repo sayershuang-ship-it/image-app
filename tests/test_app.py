@@ -249,3 +249,78 @@ def test_api_models_shape(client):
     ct = gemini["cost_table"]["standard"]
     assert "1792x1024" in ct
     assert "1024x1792" in ct
+
+
+def test_generate_rejects_unknown_model(client, monkeypatch):
+    """/generate returns 400 for unknown model."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    rv = client.post("/generate", json={"prompt": "x", "model": "nope"})
+    assert rv.status_code == 400
+    assert "Unknown model" in rv.get_json()["error"]
+
+
+def test_generate_coerces_invalid_quality(client, monkeypatch):
+    """/generate coerces invalid quality to model's first quality."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    with patch("app.threading.Thread") as mock_thread:
+        rv = client.post("/generate", json={
+            "prompt": "x", "model": "gemini-3.1-flash-lite-image",
+            "quality": "high", "size": "1024x1024"
+        })
+        assert rv.status_code == 200
+        assert "job_id" in rv.get_json()
+        args = mock_thread.call_args.kwargs["args"]
+        # args: (job_id, prompt, image_b64, quality, size, n, model, original_prompt)
+        assert args[3] == "standard"
+
+
+def test_gemini_generation_saves_results(client):
+    """Gemini generation path saves results correctly."""
+    part = MagicMock()
+    part.inline_data.mime_type = "image/png"
+    part.inline_data.data = b"\x89PNG fake"
+    cand = MagicMock()
+    cand.content.parts = [part]
+    fake_resp = MagicMock(candidates=[cand])
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = fake_resp
+
+    with patch("app.get_google_client", return_value=fake_client):
+        app_module._jobs["gj"] = {"status": "running", "created_at": 0}
+        app_module._run_generation("gj", "a cat", "", "standard",
+                                    "1792x1024", 2, "gemini-3.1-flash-lite-image")
+
+    job = app_module._jobs["gj"]
+    assert job["status"] == "done"
+    assert len(job["results"]) == 2
+    for r in job["results"]:
+        assert r["url"].startswith("data:image/png;base64,")
+        per_img = app_module.calc_cost("gemini-3.1-flash-lite-image", "standard", "1792x1024", 1)
+        assert abs(r["cost_usd"] - per_img) < 1e-6
+
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        rows = conn.execute("SELECT model, success FROM prompts").fetchall()
+    assert len(rows) == 2
+    for r in rows:
+        assert r[0] == "gemini-3.1-flash-lite-image"
+        assert r[1] == 1
+
+
+def test_gemini_without_key_fails_job(client):
+    """Gemini generation without GOOGLE_API_KEY marks job failed."""
+    with patch("app.get_google_client", return_value=None):
+        app_module._jobs["gf"] = {"status": "running", "created_at": 0}
+        app_module._run_generation("gf", "p", "", "standard",
+                                    "1024x1024", 1, "gemini-3.1-flash-lite-image")
+    job = app_module._jobs["gf"]
+    assert job["status"] == "failed"
+    assert "GOOGLE_API_KEY" in job["error"]
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        row = conn.execute("SELECT success FROM prompts").fetchone()
+    assert row[0] == 0
+
+
+def test_job_status_unknown(client):
+    """GET /job-status/<unknown> returns 404."""
+    rv = client.get("/job-status/doesnotexist")
+    assert rv.status_code == 404
