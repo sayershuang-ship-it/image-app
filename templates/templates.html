@@ -463,9 +463,36 @@ let currentImageB64 = null;
 let generating = false;
 let communityData = null;
 
-function init() {
+let MODELS = null; let currentTplModel = 'gpt-image-2';
+
+async function loadTplModels() {
+  try {
+    const d = await fetch('/api/models').then(r => r.json());
+    MODELS = Object.fromEntries(d.models.map(m => [m.id, m]));
+    const ms = document.getElementById('modelSelect');
+    ms.innerHTML = d.models.map(m => `<option value="${m.id}">${escHtml(m.name)}</option>`).join('');
+    ms.value = MODELS[currentTplModel] ? currentTplModel : d.models[0].id;
+    currentTplModel = ms.value;
+  } catch (_) {}
+  updateTplOptions();
+}
+
+function updateTplOptions() {
+  const cfg = MODELS?.[currentTplModel];
+  if (!cfg) return;
+  const sizeLabels = {'1024x1024':'1:1 (1024)','1536x1024':'3:2 (1536)','1024x1536':'2:3 (1024)','1024x1792':'9:16 (1024)','1792x1024':'16:9 (1792)'};
+  const ss = document.getElementById('sizeSelect');
+  ss.innerHTML = cfg.sizes.map(s => `<option value="${s}" ${s === '1024x1792' ? 'selected' : ''}>${sizeLabels[s] || s}</option>`).join('');
+  const qs = document.getElementById('qualitySelect');
+  qs.innerHTML = cfg.qualities.map(q => `<option value="${q}" ${q === 'high' && cfg.qualities.includes('high') ? 'selected' : q === 'standard' ? 'selected' : ''}>${q.charAt(0).toUpperCase()+q.slice(1)}</option>`).join('');
+}
+
+document.getElementById('modelSelect').addEventListener('change', () => { currentTplModel = document.getElementById('modelSelect').value; updateTplOptions(); });
+
+async function init() {
   renderTabs();
   renderTemplates();
+  await loadTplModels();
 }
 
 function renderTabs() {

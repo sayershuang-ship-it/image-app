@@ -227,3 +227,25 @@ def test_use_history_roundtrip(client):
     assert "image_b64" in data
     rv = client.post("/use-history/999999")
     assert rv.status_code == 404
+
+
+def test_api_models_shape(client):
+    """GET /api/models returns well-formed model list."""
+    rv = client.get("/api/models")
+    assert rv.status_code == 200
+    body = rv.get_json()
+    assert "models" in body
+    assert isinstance(body["models"], list)
+    assert len(body["models"]) >= 2
+    assert isinstance(body["google_key_set"], bool)
+    for m in body["models"]:
+        for key in ["id", "name", "provider", "qualities", "sizes", "max_n", "supports_edit", "cost_table"]:
+            assert key in m, f"missing key {key} in model {m.get('id', '?')}"
+        assert len(m["qualities"]) > 0
+        for q in m["qualities"]:
+            assert q in m["cost_table"], f"quality {q} not in cost_table for {m['id']}"
+    # Gemini contract: both 1792x1024 and 1024x1792 in cost_table["standard"]
+    gemini = [m for m in body["models"] if m["id"] == "gemini-3.1-flash-lite-image"][0]
+    ct = gemini["cost_table"]["standard"]
+    assert "1792x1024" in ct
+    assert "1024x1792" in ct

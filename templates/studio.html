@@ -640,7 +640,7 @@ const themeIcon = $('#theme-icon');
 
 async function init() {
   loadTheme();
-  updateModelOptions();
+  await loadModels();
   await checkHealth();
   updateButtons();
   updateCostBadge();
@@ -662,37 +662,27 @@ function setMode(m) {
   updateButtons();
 }
 
-// ── Model config ──────────────────────────────────────────
-const MODEL_DEFAULTS = {
-  'gpt-image-2': {
-    qualities: ['low', 'medium', 'high'],
-    sizes: ['1024x1024', '1792x1024', '1024x1792', '1536x1024', '1024x1536', '2048x2048'],
-    sizeLabels: {'1024x1024':'1024×1024 (1:1)', '1792x1024':'1792×1024 (16:9)', '1024x1792':'1024×1792 (9:16)',
-                 '1536x1024':'1536×1024 (3:2)', '1024x1536':'1024×1536 (2:3)', '2048x2048':'2048×2048 (1:1 HQ)'},
-    costTable: {
-      low:    {'1024x1024':0.011,'1024x1792':0.016,'1792x1024':0.016},
-      medium: {'1024x1024':0.042,'1024x1792':0.063,'1792x1024':0.063},
-      high:   {'1024x1024':0.167,'1024x1792':0.250,'1792x1024':0.250,'2048x2048':0.167},
-    },
-    hasQuality: true,
-  },
-  'gemini-3.1-flash-lite-image': {
-    qualities: ['standard'],
-    sizes: ['1024x1024','1792x1024','1024x1792','1536x1024','1024x1536'],
-    sizeLabels: {'1024x1024':'1024×1024 (1:1)', '1792x1024':'1792×1024 (16:9)', '1024x1792':'1024×1792 (9:16)',
-                 '1536x1024':'1536×1024 (4:3)', '1024x1536':'1024×1536 (3:4)'},
-    costTable: {
-      standard: {'1024x1024':0.001,'1024x1792':0.001,'1024x1792':0.001,'1536x1024':0.001,'1024x1536':0.001},
-    },
-    hasQuality: false,
-  },
-};
+// ── Model config (loaded from /api/models, hardcoded fallback) ──
+const SIZE_LABELS = {'1024x1024':'1024×1024 (1:1)','1792x1024':'1792×1024 (16:9)','1024x1792':'1024×1792 (9:16)','1536x1024':'1536×1024 (3:2)','1024x1536':'1024×1536 (2:3)','2048x2048':'2048×2048 (1:1 HQ)'};
+let MODELS = null;   // id → config, populated from /api/models
 let currentModel = 'gpt-image-2';
+
+async function loadModels() {
+  try {
+    const d = await fetch('/api/models').then(r => r.json());
+    MODELS = Object.fromEntries(d.models.map(m => [m.id, m]));
+    modelSelect.innerHTML = d.models.map(m => `<option value="${m.id}">${escHtml(m.name)}</option>`).join('');
+    modelSelect.value = MODELS[currentModel] ? currentModel : d.models[0].id;
+    currentModel = modelSelect.value;
+  } catch (_) {}
+  updateModelOptions();
+}
 
 // ── Cost badge ──────────────────────────────────────────
 function calcCost(quality, size, n) {
-  const cfg = MODEL_DEFAULTS[currentModel] || MODEL_DEFAULTS['gpt-image-2'];
-  return ((cfg.costTable[quality] || {})[size] || 0.042) * n;
+  const cfg = MODELS?.[currentModel];
+  if (!cfg) return 0.042 * n;
+  return ((cfg.cost_table[quality] || {})[size] || 0.042) * n;
 }
 function updateCostBadge() {
   const quality = qualitySelect.value;
@@ -709,20 +699,19 @@ function updateCostBadge() {
 
 // ── Dynamic model options ─────────────────────────────────
 function updateModelOptions() {
-  const cfg = MODEL_DEFAULTS[currentModel] || MODEL_DEFAULTS['gpt-image-2'];
+  const cfg = MODELS?.[currentModel];
+  if (!cfg) return;
   const qualityGroup = $('#quality-group');
-  // Update quality select
+  const hasQuality = cfg.qualities.length > 1 || cfg.qualities[0] !== 'standard';
   let prevQuality = qualitySelect.value;
   qualitySelect.innerHTML = cfg.qualities.map(q =>
     `<option value="${q}" ${q === prevQuality && cfg.qualities.includes(prevQuality) ? 'selected' : ''}>${q.charAt(0).toUpperCase() + q.slice(1)}</option>`
   ).join('');
   if (!cfg.qualities.includes(prevQuality)) qualitySelect.value = cfg.qualities[0];
-  // Show/hide quality group
-  qualityGroup.style.display = cfg.hasQuality ? '' : 'none';
-  // Update size select
+  qualityGroup.style.display = hasQuality ? '' : 'none';
   let prevSize = sizeSelect.value;
   sizeSelect.innerHTML = cfg.sizes.map(s =>
-    `<option value="${s}" ${s === prevSize && cfg.sizes.includes(prevSize) ? 'selected' : ''}>${cfg.sizeLabels[s] || s}</option>`
+    `<option value="${s}" ${s === prevSize && cfg.sizes.includes(prevSize) ? 'selected' : ''}>${SIZE_LABELS[s] || s}</option>`
   ).join('');
   if (!cfg.sizes.includes(prevSize)) sizeSelect.value = cfg.sizes[0];
   updateCostBadge();
@@ -942,14 +931,14 @@ function renderUploadPreview() {
 
 qualitySelect.addEventListener('change', () => {
   // Filter sizes for gpt-image-2: 2048x2048 only available at high quality
-  if (currentModel === 'gpt-image-2') {
+  if (currentModel === 'gpt-image-2' && MODELS?.[currentModel]) {
     const isHigh = qualitySelect.value === 'high';
-    const cfg = MODEL_DEFAULTS[currentModel];
+    const cfg = MODELS[currentModel];
     const currentSize = sizeSelect.value;
     let sizes = cfg.sizes;
     if (!isHigh) sizes = sizes.filter(s => s !== '2048x2048');
     sizeSelect.innerHTML = sizes.map(s =>
-      `<option value="${s}" ${s === currentSize && sizes.includes(currentSize) ? 'selected' : ''}>${cfg.sizeLabels[s] || s}</option>`
+      `<option value="${s}" ${s === currentSize && sizes.includes(currentSize) ? 'selected' : ''}>${SIZE_LABELS[s] || s}</option>`
     ).join('');
     if (!sizes.includes(currentSize)) {
       sizeSelect.value = sizes.includes('1024x1024') ? '1024x1024' : sizes[0];
