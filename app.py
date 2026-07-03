@@ -68,6 +68,19 @@ def get_google_client():
         _google_client = _genai.Client(api_key=GOOGLE_API_KEY)
     return _google_client
 
+
+def _upsert_key_file(name: str, value: str) -> None:
+    """Update or append NAME=value in KEY_FILE, preserving other lines."""
+    lines = []
+    if os.path.exists(KEY_FILE):
+        with open(KEY_FILE) as f:
+            lines = [l.rstrip("\n") for l in f]
+    prefix = f"{name}="
+    lines = [l for l in lines if not l.startswith(prefix)]
+    lines.append(f"{name}={value}")
+    with open(KEY_FILE, "w") as f:
+        f.write("\n".join(lines) + "\n")
+
 # ── Job Queue (async generation) ──────────────────────────────────────────────
 _jobs: dict = {}          # job_id → {status, results, error, created_at}
 _jobs_lock = threading.Lock()
@@ -1106,8 +1119,7 @@ def set_key():
     global API_KEY
     API_KEY = key
     # Persist to disk so it survives restarts
-    with open(KEY_FILE, "w") as f:
-        f.write(f"OPENAI_API_KEY={key}\n")
+    _upsert_key_file("OPENAI_API_KEY", key)
     return jsonify(status="ok")
 
 @app.route("/download/<int:pid>", methods=["GET"])

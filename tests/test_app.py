@@ -168,3 +168,29 @@ def test_per_image_cost_recorded(client):
     for res in results:
         assert abs(res["cost_usd"] - per_image) < 1e-6
     assert abs(sum(r["cost_usd"] for r in results) - batch_total) < 1e-6
+
+
+def test_set_key_preserves_other_keys(client):
+    """/set-key updates OPENAI_API_KEY without destroying other keys."""
+    token_file = tempfile.mktemp()
+    with open(token_file, "w") as f:
+        f.write("GOOGLE_API_KEY=g-test\nOPENAI_API_KEY=sk-old\n")
+
+    old_key_file = app_module.KEY_FILE
+    old_env = os.environ.get("OPENAI_API_KEY")
+    app_module.KEY_FILE = token_file
+
+    try:
+        rv = client.post("/set-key", json={"api_key": "sk-newkey123"})
+        assert rv.status_code == 200
+        with open(token_file) as f:
+            content = f.read()
+        assert "GOOGLE_API_KEY=g-test" in content
+        assert "OPENAI_API_KEY=sk-newkey123" in content
+        assert "sk-old" not in content
+    finally:
+        app_module.KEY_FILE = old_key_file
+        if old_env is not None:
+            os.environ["OPENAI_API_KEY"] = old_env
+        elif "OPENAI_API_KEY" in os.environ:
+            del os.environ["OPENAI_API_KEY"]
