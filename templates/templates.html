@@ -248,6 +248,11 @@
 
     <main class="main">
       <div class="toolbar">
+        <label>Model</label>
+        <select id="modelSelect">
+          <option value="gpt-image-2">GPT Image 2</option>
+          <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash Lite</option>
+        </select>
         <label>Size</label>
         <select id="sizeSelect">
           <option value="1024x1024">1:1 (1024)</option>
@@ -619,11 +624,12 @@ async function generateImage() {
   const size = document.getElementById('sizeSelect').value;
   const quality = document.getElementById('qualitySelect').value;
   const n = parseInt(document.getElementById('nInput').value) || 1;
+  const model = document.getElementById('modelSelect').value;
 
   try {
     const res = await fetch('/generate', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({prompt, quality, size, n})
+      body: JSON.stringify({prompt, model, quality, size, n})
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);

@@ -537,6 +537,13 @@
       <div class="controls">
         <div class="controls-row">
           <div class="control-group">
+            <label for="model-select">Model</label>
+            <select id="model-select">
+              <option value="gpt-image-2">GPT Image 2</option>
+              <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash Lite</option>
+            </select>
+          </div>
+          <div class="control-group" id="quality-group">
             <label for="quality-select">Quality</label>
             <select id="quality-select">
               <option value="low">Low</option>
@@ -633,6 +640,7 @@ const themeIcon = $('#theme-icon');
 
 async function init() {
   loadTheme();
+  updateModelOptions();
   await checkHealth();
   updateButtons();
   updateCostBadge();
@@ -654,25 +662,75 @@ function setMode(m) {
   updateButtons();
 }
 
-// ── Cost badge ──────────────────────────────────────────
-const COST_TABLE = {
-  low:    {'1024x1024':0.011,'1024x1792':0.016,'1792x1024':0.016},
-  medium: {'1024x1024':0.042,'1024x1792':0.063,'1792x1024':0.063},
-  high:   {'1024x1024':0.167,'1024x1792':0.250,'1792x1024':0.250,'2048x2048':0.167},
+// ── Model config ──────────────────────────────────────────
+const MODEL_DEFAULTS = {
+  'gpt-image-2': {
+    qualities: ['low', 'medium', 'high'],
+    sizes: ['1024x1024', '1792x1024', '1024x1792', '1536x1024', '1024x1536', '2048x2048'],
+    sizeLabels: {'1024x1024':'1024×1024 (1:1)', '1792x1024':'1792×1024 (16:9)', '1024x1792':'1024×1792 (9:16)',
+                 '1536x1024':'1536×1024 (3:2)', '1024x1536':'1024×1536 (2:3)', '2048x2048':'2048×2048 (1:1 HQ)'},
+    costTable: {
+      low:    {'1024x1024':0.011,'1024x1792':0.016,'1792x1024':0.016},
+      medium: {'1024x1024':0.042,'1024x1792':0.063,'1792x1024':0.063},
+      high:   {'1024x1024':0.167,'1024x1792':0.250,'1792x1024':0.250,'2048x2048':0.167},
+    },
+    hasQuality: true,
+  },
+  'gemini-3.1-flash-lite-image': {
+    qualities: ['standard'],
+    sizes: ['1024x1024','1792x1024','1024x1792','1536x1024','1024x1536'],
+    sizeLabels: {'1024x1024':'1024×1024 (1:1)', '1792x1024':'1792×1024 (16:9)', '1024x1792':'1024×1792 (9:16)',
+                 '1536x1024':'1536×1024 (4:3)', '1024x1536':'1024×1536 (3:4)'},
+    costTable: {
+      standard: {'1024x1024':0.001,'1024x1792':0.001,'1024x1792':0.001,'1536x1024':0.001,'1024x1536':0.001},
+    },
+    hasQuality: false,
+  },
 };
+let currentModel = 'gpt-image-2';
+
+// ── Cost badge ──────────────────────────────────────────
 function calcCost(quality, size, n) {
-  return ((COST_TABLE[quality] || {})[size] || 0.042) * n;
+  const cfg = MODEL_DEFAULTS[currentModel] || MODEL_DEFAULTS['gpt-image-2'];
+  return ((cfg.costTable[quality] || {})[size] || 0.042) * n;
 }
 function updateCostBadge() {
+  const quality = qualitySelect.value;
+  const size = sizeSelect.value;
   if (state.mode === 'batch') {
     const lines = (batchInput.value || '').split('\n').filter(l => l.trim()).length;
-    const c = calcCost(qualitySelect.value, sizeSelect.value, Math.max(lines, 1));
+    const c = calcCost(quality, size, Math.max(lines, 1));
     costBadge.textContent = `~$${c.toFixed(3)} (${lines} prompts)`;
   } else {
-    const c = calcCost(qualitySelect.value, sizeSelect.value, parseInt(countSelect.value) || 1);
+    const c = calcCost(quality, size, parseInt(countSelect.value) || 1);
     costBadge.textContent = `~$${c.toFixed(3)}`;
   }
 }
+
+// ── Dynamic model options ─────────────────────────────────
+function updateModelOptions() {
+  const cfg = MODEL_DEFAULTS[currentModel] || MODEL_DEFAULTS['gpt-image-2'];
+  const qualityGroup = $('#quality-group');
+  // Update quality select
+  let prevQuality = qualitySelect.value;
+  qualitySelect.innerHTML = cfg.qualities.map(q =>
+    `<option value="${q}" ${q === prevQuality && cfg.qualities.includes(prevQuality) ? 'selected' : ''}>${q.charAt(0).toUpperCase() + q.slice(1)}</option>`
+  ).join('');
+  if (!cfg.qualities.includes(prevQuality)) qualitySelect.value = cfg.qualities[0];
+  // Show/hide quality group
+  qualityGroup.style.display = cfg.hasQuality ? '' : 'none';
+  // Update size select
+  let prevSize = sizeSelect.value;
+  sizeSelect.innerHTML = cfg.sizes.map(s =>
+    `<option value="${s}" ${s === prevSize && cfg.sizes.includes(prevSize) ? 'selected' : ''}>${cfg.sizeLabels[s] || s}</option>`
+  ).join('');
+  if (!cfg.sizes.includes(prevSize)) sizeSelect.value = cfg.sizes[0];
+  updateCostBadge();
+  updateButtons();
+}
+
+const modelSelect = $('#model-select');
+modelSelect.addEventListener('change', () => { currentModel = modelSelect.value; updateModelOptions(); });
 qualitySelect.addEventListener('change', updateCostBadge);
 sizeSelect.addEventListener('change', updateCostBadge);
 countSelect.addEventListener('change', updateCostBadge);
@@ -875,15 +933,21 @@ function renderUploadPreview() {
   }
 }
 
-const allSizeOptions = Array.from(sizeSelect.options);
 qualitySelect.addEventListener('change', () => {
-  const isHigh = qualitySelect.value === 'high';
-  const currentSize = sizeSelect.value;
-  sizeSelect.innerHTML = '';
-  allSizeOptions.forEach(opt => {
-    if (opt.getAttribute('data-high') !== 'true' || isHigh) sizeSelect.appendChild(opt.cloneNode(true));
-  });
-  if (Array.from(sizeSelect.options).some(o => o.value === currentSize)) sizeSelect.value = currentSize;
+  // Filter sizes for gpt-image-2: 2048x2048 only available at high quality
+  if (currentModel === 'gpt-image-2') {
+    const isHigh = qualitySelect.value === 'high';
+    const cfg = MODEL_DEFAULTS[currentModel];
+    const currentSize = sizeSelect.value;
+    let sizes = cfg.sizes;
+    if (!isHigh) sizes = sizes.filter(s => s !== '2048x2048');
+    sizeSelect.innerHTML = sizes.map(s =>
+      `<option value="${s}" ${s === currentSize && sizes.includes(currentSize) ? 'selected' : ''}>${cfg.sizeLabels[s] || s}</option>`
+    ).join('');
+    if (!sizes.includes(currentSize)) {
+      sizeSelect.value = sizes.includes('1024x1024') ? '1024x1024' : sizes[0];
+    }
+  }
 });
 
 promptInput.addEventListener('input', updateButtons);
@@ -950,7 +1014,7 @@ async function doGenerate() {
   const startTime = Date.now();
   showGeneratingProgress(startTime);
   try {
-    const body = { prompt, quality: qualitySelect.value, size: sizeSelect.value, n: parseInt(countSelect.value) };
+    const body = { prompt, model: currentModel, quality: qualitySelect.value, size: sizeSelect.value, n: parseInt(countSelect.value) };
     if (state.imageB64) body.image_b64 = state.imageB64;
     const r = await fetch('/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json();
@@ -997,7 +1061,7 @@ async function doBatchGenerate() {
     const r = await fetch('/batch-generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompts, quality, size })
+      body: JSON.stringify({ prompts, model: currentModel, quality, size })
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Batch failed to start');

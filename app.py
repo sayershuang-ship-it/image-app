@@ -48,6 +48,25 @@ if not API_KEY and os.path.exists(KEY_FILE):
                 os.environ["OPENAI_API_KEY"] = API_KEY
                 break
 
+# ── Google Gemini Config ──────────────────────────────────────────────────────────
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+if not GOOGLE_API_KEY and os.path.exists(KEY_FILE):
+    with open(KEY_FILE) as f:
+        for line in f:
+            if line.startswith("GOOGLE_API_KEY="):
+                GOOGLE_API_KEY = line.strip().split("=", 1)[1].strip('"').strip("'")
+                os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
+                break
+
+_google_client = None
+
+def get_google_client():
+    global _google_client
+    if _google_client is None and GOOGLE_API_KEY:
+        from google import genai as _genai
+        _google_client = _genai.Client(api_key=GOOGLE_API_KEY)
+    return _google_client
+
 # ── Job Queue (async generation) ──────────────────────────────────────────────
 _jobs: dict = {}          # job_id → {status, results, error, created_at}
 _jobs_lock = threading.Lock()
@@ -160,16 +179,49 @@ def api_key_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# gpt-image-2 pricing per image (USD, as of mid-2025)
-_COST_TABLE = {
-    "low":    {"1024x1024": 0.011, "1024x1792": 0.016, "1792x1024": 0.016},
-    "medium": {"1024x1024": 0.042, "1024x1792": 0.063, "1792x1024": 0.063},
-    "high":   {"1024x1024": 0.167, "1024x1792": 0.250, "1792x1024": 0.250,
-               "2048x2048": 0.167},
+# ── Model definitions & pricing ──────────────────────────────────────────────────
+_MODELS = {
+    "gpt-image-2": {
+        "name": "GPT Image 2",
+        "provider": "openai",
+        "qualities": ["low", "medium", "high"],
+        "sizes": ["1024x1024", "1792x1024", "1024x1792", "1536x1024", "1024x1536", "2048x2048"],
+        "max_n": 4,
+        "supports_edit": True,
+        "cost_table": {
+            "low":    {"1024x1024": 0.011, "1024x1792": 0.016, "1792x1024": 0.016},
+            "medium": {"1024x1024": 0.042, "1024x1792": 0.063, "1792x1024": 0.063},
+            "high":   {"1024x1024": 0.167, "1024x1792": 0.250, "1792x1024": 0.250,
+                       "2048x2048": 0.167},
+        },
+    },
+    "gemini-3.1-flash-lite-image": {
+        "name": "Gemini 3.1 Flash Lite Image",
+        "provider": "google",
+        "qualities": ["standard"],
+        "sizes": ["1024x1024", "1792x1024", "1024x1792", "1536x1024", "1024x1536"],
+        "max_n": 4,
+        "supports_edit": False,
+        "cost_table": {
+            "standard": {"1024x1024": 0.001, "1792x1024": 0.001, "1024x1792": 0.001,
+                         "1536x1024": 0.001, "1024x1536": 0.001},
+        },
+    },
 }
 
-def calc_cost(quality: str, size: str, n: int = 1) -> float:
-    return round(_COST_TABLE.get(quality, {}).get(size, 0.042) * n, 4)
+# Size → Gemini aspect ratio mapping
+_GEMINI_ASPECT_MAP = {
+    "1024x1024": "1:1",
+    "1792x1024": "16:9",
+    "1024x1792": "9:16",
+    "1536x1024": "4:3",
+    "1024x1536": "3:4",
+}
+
+def calc_cost(model: str, quality: str, size: str, n: int = 1) -> float:
+    model_table = _MODELS.get(model, {}).get("cost_table", {})
+    default = 0.042
+    return round(model_table.get(quality, {}).get(size, default) * n, 4)
 
 def save_prompt(prompt, image_b64, revised, quality, size, model,
                 result_url, result_b64, success, error_msg="",
@@ -371,13 +423,80 @@ def _resolve_vars(text: str, variables: dict) -> str:
     return re.sub(r'\{argument\s+name="([^"]+)"(?:\s+default="([^"]*)")?\s*\}', _sub, text)
 
 
+def _generate_gemini(job_id: str, prompt: str, image_b64: str,
+                     size: str, n: int, model: str,
+                     original_prompt: str = "") -> None:
+    """Run Gemini image generation and populate _jobs[job_id]."""
+    from google.genai import types as genai_types
+
+    client = get_google_client()
+    if not client:
+        raise Exception("GOOGLE_API_KEY not configured. Set GOOGLE_API_KEY in ~/.image-studio.env")
+
+    aspect_ratio = _GEMINI_ASPECT_MAP.get(size, "1:1")
+
+    if image_b64:
+        img_bytes = base64.b64decode(image_b64)
+        img = Image.open(io.BytesIO(img_bytes))
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+        contents = [
+            genai_types.Part.from_bytes(data=buf.read(), mime_type="image/png"),
+            prompt,
+        ]
+    else:
+        contents = [prompt]
+
+    config = genai_types.GenerateContentConfig(
+        response_modalities=["IMAGE", "TEXT"],
+        image_config=genai_types.ImageConfig(aspect_ratio=aspect_ratio),
+    )
+
+    cost = calc_cost(model, "standard", size, n)
+    results = []
+    for i in range(n):
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+        for candidate in response.candidates:
+            if not candidate.content or not candidate.content.parts:
+                continue
+            for part in candidate.content.parts:
+                if part.inline_data and part.inline_data.mime_type and \
+                   part.inline_data.mime_type.startswith("image/"):
+                    b64 = base64.b64encode(part.inline_data.data).decode()
+                    data_url = f"data:{part.inline_data.mime_type};base64,{b64}"
+                    pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
+                                      None, "standard", size, model,
+                                      None, b64, True,
+                                      original_prompt=original_prompt or None, cost_usd=cost)
+                    results.append({"url": data_url, "revised_prompt": None,
+                                     "cost_usd": cost, "pid": pid})
+
+    with _jobs_lock:
+        _jobs[job_id]["status"] = "done"
+        _jobs[job_id]["results"] = results
+
+
 def _run_generation(job_id: str, prompt: str, image_b64: str,
-                    quality: str, size: str, n: int,
+                    quality: str, size: str, n: int, model: str,
                     original_prompt: str = "") -> None:
     """Run image generation in a background thread and store result in _jobs."""
+    model_config = _MODELS.get(model, _MODELS["gpt-image-2"])
+    provider = model_config["provider"]
+
     try:
+        if provider == "google":
+            _generate_gemini(job_id, prompt, image_b64, size, n, model,
+                             original_prompt=original_prompt)
+            return
+
+        # ── OpenAI path ──────────────────────────────────────────────────────────
         client = get_client()
-        kwargs = dict(model="gpt-image-2", prompt=prompt, n=n,
+        kwargs = dict(model=model, prompt=prompt, n=n,
                       quality=quality, size=size)
 
         if image_b64:
@@ -401,11 +520,10 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
         else:
             response = client.images.generate(**kwargs)
 
-        cost = calc_cost(quality, size, n)
+        cost = calc_cost(model, quality, size, n)
         results = []
         for item in response.data:
             if item.url:
-                # Download immediately so the image survives URL expiry
                 try:
                     import urllib.request
                     with urllib.request.urlopen(item.url) as resp:
@@ -414,7 +532,7 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
                     raw_b64 = None
                 data_url = f"data:image/png;base64,{raw_b64}" if raw_b64 else item.url
                 pid = save_prompt(prompt, image_b64, item.revised_prompt, quality, size,
-                                  "gpt-image-2", item.url, raw_b64, True,
+                                  model, item.url, raw_b64, True,
                                   original_prompt=original_prompt or None, cost_usd=cost)
                 results.append({"url": data_url, "revised_prompt": item.revised_prompt,
                                  "cost_usd": cost, "pid": pid})
@@ -422,7 +540,7 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
                 data_url = f"data:image/png;base64,{item.b64_json}"
                 pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
                                   item.revised_prompt, quality, size,
-                                  "gpt-image-2", None, item.b64_json, True,
+                                  model, None, item.b64_json, True,
                                   original_prompt=original_prompt or None, cost_usd=cost)
                 results.append({"url": data_url, "revised_prompt": item.revised_prompt,
                                  "cost_usd": cost, "pid": pid})
@@ -433,7 +551,7 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
 
     except Exception as exc:
         save_prompt(prompt, image_b64, None, quality, size,
-                    "gpt-image-2", None, None, False, str(exc))
+                    model, None, None, False, str(exc))
         with _jobs_lock:
             _jobs[job_id]["status"] = "failed"
             _jobs[job_id]["error"] = str(exc)
@@ -446,11 +564,18 @@ def generate():
     original_prompt  = (data.get("prompt") or "").strip()
     prompt           = original_prompt
     image_b64        = data.get("image_b64") or ""
+    model            = data.get("model", "gpt-image-2")
     quality          = data.get("quality", "medium")
     size             = data.get("size", "1024x1024")
     n                = max(min(int(data.get("n", 1)), 4), 1)
     negative         = (data.get("negative_prompt") or "").strip()
     variables        = data.get("variables") or {}
+
+    if model not in _MODELS:
+        return jsonify(error=f"Unknown model: {model}"), 400
+    model_config = _MODELS[model]
+    if quality not in model_config["qualities"]:
+        quality = model_config["qualities"][0]
 
     if not prompt:
         return jsonify(error="Prompt is required"), 400
@@ -461,7 +586,7 @@ def generate():
     if negative:
         prompt = f"{prompt}\n\nNegative Prompt:\n{_resolve_vars(negative, variables)}"
 
-    estimated_cost = calc_cost(quality, size, n)
+    estimated_cost = calc_cost(model, quality, size, n)
     _cleanup_old_jobs()
 
     job_id = uuid.uuid4().hex[:12]
@@ -471,7 +596,7 @@ def generate():
 
     thread = threading.Thread(
         target=_run_generation,
-        args=(job_id, prompt, image_b64, quality, size, n, original_prompt),
+        args=(job_id, prompt, image_b64, quality, size, n, model, original_prompt),
         daemon=True,
     )
     thread.start()
@@ -501,6 +626,24 @@ def api_stats():
         """).fetchone()
     return jsonify(total=row[0], successes=row[1],
                    total_cost=row[2] or 0, starred_count=row[3] or 0)
+
+
+# ── Model list endpoint ────────────────────────────────────────────────────────
+@app.route("/api/models")
+def api_models():
+    models = []
+    for mid, cfg in _MODELS.items():
+        models.append({
+            "id": mid,
+            "name": cfg["name"],
+            "provider": cfg["provider"],
+            "qualities": cfg["qualities"],
+            "sizes": cfg["sizes"],
+            "max_n": cfg["max_n"],
+            "supports_edit": cfg["supports_edit"],
+            "cost_table": cfg["cost_table"],
+        })
+    return jsonify(models=models, google_key_set=bool(GOOGLE_API_KEY))
 
 
 # ── Tag & star endpoints ──────────────────────────────────────────────────────
@@ -547,8 +690,15 @@ def search_prompts():
 def batch_generate():
     data     = request.get_json() or {}
     prompts  = data.get("prompts") or []       # list of strings
+    model    = data.get("model", "gpt-image-2")
     quality  = data.get("quality", "medium")
     size     = data.get("size", "1024x1024")
+
+    if model not in _MODELS:
+        return jsonify(error=f"Unknown model: {model}"), 400
+    model_config = _MODELS[model]
+    if quality not in model_config["qualities"]:
+        quality = model_config["qualities"][0]
 
     if not prompts or not isinstance(prompts, list):
         return jsonify(error="prompts must be a non-empty list"), 400
@@ -564,12 +714,12 @@ def batch_generate():
             _jobs[job_id] = {"status": "running", "created_at": time.time(),
                              "batch_id": batch_id}
         t = threading.Thread(target=_run_generation,
-                             args=(job_id, p, "", quality, size, 1, p), daemon=True)
+                             args=(job_id, p, "", quality, size, 1, model, p), daemon=True)
         t.start()
         job_ids.append({"job_id": job_id, "prompt": p})
 
     return jsonify(batch_id=batch_id, jobs=job_ids,
-                   estimated_cost=calc_cost(quality, size, len(prompts)))
+                   estimated_cost=calc_cost(model, quality, size, len(prompts)))
 
 
 # ── ZIP export ────────────────────────────────────────────────────────────────
@@ -620,21 +770,29 @@ def api_v1_generate():
         return jsonify(error="prompt is required"), 400
     prompt    = _resolve_vars(original_prompt, data.get("variables") or {})
     image_b64 = data.get("image_b64") or ""
+    model     = data.get("model", "gpt-image-2")
     quality   = data.get("quality", "medium")
     size      = data.get("size", "1024x1024")
     n         = max(min(int(data.get("n", 1)), 4), 1)
     negative  = (data.get("negative_prompt") or "").strip()
+
+    if model not in _MODELS:
+        return jsonify(error=f"Unknown model: {model}"), 400
+    model_config = _MODELS[model]
+    if quality not in model_config["qualities"]:
+        quality = model_config["qualities"][0]
+
     if negative:
         prompt = f"{prompt}\n\nNegative Prompt:\n{negative}"
 
-    cost = calc_cost(quality, size, n)
+    cost = calc_cost(model, quality, size, n)
     _cleanup_old_jobs()
     job_id = uuid.uuid4().hex[:12]
     with _jobs_lock:
         _jobs[job_id] = {"status": "running", "created_at": time.time()}
 
     threading.Thread(target=_run_generation,
-                     args=(job_id, prompt, image_b64, quality, size, n, original_prompt),
+                     args=(job_id, prompt, image_b64, quality, size, n, model, original_prompt),
                      daemon=True).start()
 
     base = request.host_url.rstrip("/")
@@ -645,6 +803,7 @@ def api_v1_generate():
 def studio():
     return render_template("studio.html",
                            api_key_set=bool(os.environ.get("OPENAI_API_KEY")),
+                           google_key_set=bool(GOOGLE_API_KEY),
                            set_key_secret=os.environ.get("SET_KEY_SECRET", ""))
 
 
