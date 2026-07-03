@@ -293,6 +293,9 @@
 
 {% block page_js %}
 <script>
+function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
 const TEMPLATES = {
   'Design & Info': {
     'UI & Interface': [
@@ -494,7 +497,7 @@ async function loadCommunityTab() {
     }
     renderCommunityTemplates();
   } catch(e) {
-    list.innerHTML = '<div class="tpl-item" style="color:oklch(55% 0.17 25)">Failed: ' + e.message + '</div>';
+    list.innerHTML = '<div class="tpl-item" style="color:oklch(55% 0.17 25)">Failed: ' + escHtml(e.message) + '</div>';
   }
 }
 
@@ -508,34 +511,32 @@ function renderCommunityTemplates() {
   }
   list.innerHTML = cats.map(([cat, items]) => {
     const itemHtml = items.map((t, i) => {
-      const imgTag = t.image_url ? '<img src="' + t.image_url + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;margin-right:8px;flex-shrink:0" onerror="this.style.display=\'none\'" loading="lazy" />' : '';
+      const imgTag = t.image_url ? '<img src="' + escAttr(t.image_url) + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;margin-right:8px;flex-shrink:0" onerror="this.style.display=\'none\'" loading="lazy" />' : '';
       const hasPrompt = t.prompt && t.prompt.trim();
       const cls = hasPrompt ? 'tpl-item' : 'tpl-item no-prompt';
       const title = hasPrompt ? t.title : '🖼 ' + t.title + '（無文字，點擊看圖）';
-      return '<div class="' + cls + '" onclick="selectCommunity(' + i + ', &quot;' + cat.replace(/"/g, '&quot;') + '&quot;)" style="display:flex;align-items:center;gap:4px" title="' + t.title + '">' + imgTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + title + '</span></div>';
+      return '<div class="' + cls + '" data-cat="' + escAttr(cat) + '" data-idx="' + i + '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' + imgTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + escHtml(title) + '</span></div>';
     }).join('');
-    return '<div class="category"><div class="cat-header" onclick="toggleCat(this)"><span>' + cat + '</span><span class="badge" style="font-size:10px;color:var(--muted);margin-left:auto;margin-right:4px">' + items.length + '</span><span class="arrow">▼</span></div><div class="cat-items" style="max-height:600px">' + itemHtml + '</div></div>';
+    return '<div class="category"><div class="cat-header" onclick="toggleCat(this)"><span>' + escHtml(cat) + '</span><span class="badge" style="font-size:10px;color:var(--muted);margin-left:auto;margin-right:4px">' + items.length + '</span><span class="arrow">▼</span></div><div class="cat-items" style="max-height:600px">' + itemHtml + '</div></div>';
   }).join('');
+  list.querySelectorAll('.tpl-item[data-cat]').forEach(el => {
+    el.addEventListener('click', () => selectCommunity(parseInt(el.dataset.idx), el.dataset.cat, el));
+  });
 }
 
-function selectCommunity(idx, cat) {
-  document.querySelectorAll('.tpl-item').forEach(el => el.classList.remove('selected'));
+function selectCommunity(idx, cat, el) {
+  document.querySelectorAll('.tpl-item').forEach(x => x.classList.remove('selected'));
+  if (el) el.classList.add('selected');
   const items = communityData[cat];
   const item = items[idx];
-  var allItems = document.querySelectorAll('.tpl-item');
-  for (var i = 0; i < allItems.length; i++) {
-    if (allItems[i].textContent.indexOf(item.title) !== -1) {
-      allItems[i].classList.add('selected');
-      break;
-    }
-  }
   if (item.prompt && item.prompt.trim()) {
     document.getElementById('promptInput').value = item.prompt;
     document.getElementById('resultArea').innerHTML = '<span class="empty">Prompt loaded. Click Generate to create image.</span>';
   } else {
     document.getElementById('promptInput').value = '';
     if (item.image_url) {
-      document.getElementById('resultArea').innerHTML = '<div style="text-align:center"><img src="' + item.image_url + '" style="max-width:100%;max-height:300px;object-fit:contain" onerror="this.parentElement.innerHTML=\'<span class=empty>Image unavailable</span>\'" /><br /><span style="font-size:11px;color:var(--muted)">📌 此提示詞無文字，僅供圖片參考 | <a href="' + item.source_url + '" target="_blank" style="color:var(--accent)">原始來源</a></span></div>';
+      const src = /^https?:\/\//.test(item.source_url || '') ? escAttr(item.source_url) : '';
+      document.getElementById('resultArea').innerHTML = '<div style="text-align:center"><img src="' + escAttr(item.image_url) + '" style="max-width:100%;max-height:300px;object-fit:contain" onerror="this.parentElement.innerHTML=\'<span class=empty>Image unavailable</span>\'" /><br /><span style="font-size:11px;color:var(--muted)">📌 此提示詞無文字，僅供圖片參考' + (src ? ' | <a href="' + src + '" target="_blank" rel="noopener" style="color:var(--accent)">原始來源</a>' : '') + '</span></div>';
     } else {
       document.getElementById('resultArea').innerHTML = '<span class="empty">此提示詞無文字內容，僅有來源連結</span>';
     }
@@ -651,7 +652,7 @@ async function generateImage() {
       throw new Error('No image in response');
     }
   } catch(e) {
-    document.getElementById('resultArea').innerHTML = `<span class="empty" style="color:oklch(55% 0.17 25)">${e.message}</span>`;
+    document.getElementById('resultArea').innerHTML = `<span class="empty" style="color:oklch(55% 0.17 25)">${escHtml(e.message)}</span>`;
     setStatus(e.message, true);
   } finally {
     generating = false;
