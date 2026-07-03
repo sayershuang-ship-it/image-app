@@ -440,6 +440,12 @@ function escHtml(s) {
   return el.innerHTML;
 }
 
+function parseTs(s) {
+  if (!s) return new Date();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return new Date(s.replace(' ', 'T') + 'Z');
+  return new Date(s);
+}
+
 /* ── Data ─────────────────────────────────────── */
 
 async function loadImages() {
@@ -475,15 +481,15 @@ function getFilteredImages() {
   if (state.filter === 'starred') return state.images.filter(img => img.starred);
   if (state.filter === 'today') {
     const dayStart = new Date(); dayStart.setHours(0,0,0,0);
-    return state.images.filter(img => new Date(img.ts) >= dayStart);
+    return state.images.filter(img => parseTs(img.ts) >= dayStart);
   }
   if (state.filter === 'week') {
     const weekAgo = now - 7 * 86400000;
-    return state.images.filter(img => new Date(img.ts).getTime() > weekAgo);
+    return state.images.filter(img => parseTs(img.ts).getTime() > weekAgo);
   }
   if (state.filter === 'month') {
     const monthAgo = now - 30 * 86400000;
-    return state.images.filter(img => new Date(img.ts).getTime() > monthAgo);
+    return state.images.filter(img => parseTs(img.ts).getTime() > monthAgo);
   }
   return state.images;
 }
@@ -551,7 +557,7 @@ function openDetail(id) {
   $('#modal-title').textContent = currentDetail.label;
   $('#modal-quality').textContent = currentDetail.quality;
   $('#modal-size').textContent = currentDetail.size;
-  $('#modal-date').textContent = new Date(currentDetail.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  $('#modal-date').textContent = parseTs(currentDetail.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
   $('#modal-cost').textContent = currentDetail.cost != null ? `$${currentDetail.cost.toFixed(3)}` : '—';
   $('#modal-prompt').textContent = currentDetail.prompt;
   $('#modal-star').textContent = currentDetail.starred ? '★ Unstar' : '☆ Star';

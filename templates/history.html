@@ -483,6 +483,12 @@ function escHtml(s) {
   return el.innerHTML;
 }
 
+function parseTs(s) {
+  if (!s) return new Date();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return new Date(s.replace(' ', 'T') + 'Z');
+  return new Date(s);
+}
+
 /* ── Data ─────────────────────────────────────── */
 
 async function loadHistory() {
@@ -534,7 +540,7 @@ function renderHistory() {
   }
 
   $('#history-list').innerHTML = filtered.map(e => {
-    const ts = new Date(e.ts);
+    const ts = parseTs(e.ts);
     const dateStr = ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const thumb = e.hasResult
       ? `<img src="/api/thumb/${e.id}" width="64" height="64" alt="" loading="lazy" style="object-fit:cover;width:100%;height:100%">`
@@ -628,7 +634,7 @@ function openDetail(id) {
   $('#detail-status').textContent = entry.success ? 'Success' : 'Failed';
   const costEl = $('#detail-cost');
   if (costEl) costEl.textContent = entry.cost != null ? `$${entry.cost.toFixed(3)}` : '—';
-  $('#detail-ts').textContent = new Date(entry.ts).toLocaleString('en-US', {
+  $('#detail-ts').textContent = parseTs(entry.ts).toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: 'numeric', minute: '2-digit', second: '2-digit'
   });
