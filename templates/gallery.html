@@ -612,7 +612,8 @@ $('#modal-fb-post').addEventListener('click', async () => {
       return;
     }
     fbPages = await r.json();
-    if (!fbPages || !fbPages.length) {
+    fbPages = fbPages.pages || [];
+    if (!fbPages.length) {
       $('#fb-auth-hint').style.display = '';
       return;
     }

@@ -114,3 +114,27 @@ def test_fb_post_requires_token_or_pid(client):
             assert "files" in call_args[1], "fb_post should use multipart upload"
     finally:
         app_module.FB_PAGE_TOKEN_FILE = old_token_file
+
+
+def test_fb_pages_shape(client):
+    """/fb-pages returns {pages: [{id, name}, ...]}."""
+    token_file = tempfile.mktemp()
+    with open(token_file, "w") as f:
+        f.write("pid1:Page One:tok1\n")
+    old = app_module.FB_PAGE_TOKEN_FILE
+    app_module.FB_PAGE_TOKEN_FILE = token_file
+    try:
+        rv = client.get("/fb-pages")
+        assert rv.status_code == 200
+        assert rv.get_json() == {"pages": [{"id": "pid1", "name": "Page One"}]}
+    finally:
+        app_module.FB_PAGE_TOKEN_FILE = old
+
+    # Missing token file → 400
+    app_module.FB_PAGE_TOKEN_FILE = "/nonexistent/path"
+    try:
+        rv = client.get("/fb-pages")
+        assert rv.status_code == 400
+        assert "error" in rv.get_json()
+    finally:
+        app_module.FB_PAGE_TOKEN_FILE = old

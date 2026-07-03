@@ -21,6 +21,7 @@ from functools import wraps
 
 import requests
 from flask import Flask, render_template, request, jsonify, send_file, abort, make_response
+from markupsafe import escape
 from PIL import Image
 from openai import OpenAI
 
@@ -950,7 +951,7 @@ def fb_callback():
         # Build response
         html = "<h1>✅ Authorized!</h1><ul>"
         for p in pages:
-            html += f"<li><b>{p.get('name', 'Unknown')}</b> — ID: {p['id']}</li>"
+            html += f"<li><b>{escape(p.get('name', 'Unknown'))}</b> — ID: {escape(p['id'])}</li>"
         html += "</ul><p>Page tokens saved. You can now close this page.</p>"
         return html
 
