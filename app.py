@@ -310,6 +310,14 @@ def delete_history(pid):
         conn.execute("DELETE FROM prompts WHERE id=?", (pid,))
     return jsonify(status="ok")
 
+
+@app.route("/history", methods=["DELETE"])
+def delete_all_history():
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute("DELETE FROM prompts")
+    return jsonify(status="ok", deleted=cur.rowcount)
+
+
 @app.route("/use-history/<int:pid>", methods=["POST"])
 def use_history(pid):
     """Load a history item's prompt into the editor"""

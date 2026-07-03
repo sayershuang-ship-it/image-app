@@ -194,3 +194,36 @@ def test_set_key_preserves_other_keys(client):
             os.environ["OPENAI_API_KEY"] = old_env
         elif "OPENAI_API_KEY" in os.environ:
             del os.environ["OPENAI_API_KEY"]
+
+
+def test_delete_all_history(client):
+    """DELETE /history removes all rows and returns count."""
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        for i in range(3):
+            conn.execute("INSERT INTO prompts (prompt) VALUES (?)", (f"test {i}",))
+    rv = client.delete("/history")
+    assert rv.status_code == 200
+    assert rv.get_json() == {"status": "ok", "deleted": 3}
+    rv = client.get("/history")
+    assert rv.get_json() == []
+
+
+def test_use_history_roundtrip(client):
+    """POST /use-history/<pid> returns prompt and image_b64."""
+    small_png = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+        "+P+/HgAF3wIM4+Rc7AAAAABJRU5ErkJggg=="
+    )
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        conn.execute(
+            "INSERT INTO prompts (prompt, image_b64) VALUES (?, ?)",
+            ("test prompt", small_png),
+        )
+        pid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    rv = client.post(f"/use-history/{pid}")
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert data["prompt"] == "test prompt"
+    assert "image_b64" in data
+    rv = client.post("/use-history/999999")
+    assert rv.status_code == 404

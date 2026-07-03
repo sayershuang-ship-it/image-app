@@ -670,18 +670,8 @@ $('#detail-delete').addEventListener('click', () => {
 /* ── Actions ─────────────────────────────────────── */
 
 async function restoreEntry(id) {
-  try {
-    const r = await fetch('/use-history/' + id, { method: 'POST' });
-    if (!r.ok) throw new Error('Server error');
-    const data = await r.json();
-    localStorage.setItem('image-studio-restore', JSON.stringify({
-      prompt: data.prompt || '',
-      image_b64: data.image_b64 || ''
-    }));
-    toast('Restored — open Studio to continue');
-  } catch (e) {
-    toast('Restore failed');
-  }
+  localStorage.setItem('image-studio-restore', JSON.stringify({ pid: id }));
+  toast('Restored — open Studio to continue');
 }
 
 async function deleteEntry(id) {
@@ -729,15 +719,15 @@ $('#export-zip-btn').addEventListener('click', async () => {
 });
 
 $('#clear-all-btn').addEventListener('click', async () => {
-  if (state.entries.length === 0) return;
-  if (!confirm(`Delete all ${state.entries.length} history entries?`)) return;
+  if (!confirm(`Delete ALL history entries (including older ones not shown)?`)) return;
   try {
-    for (const e of state.entries) {
-      await fetch('/history/' + e.id, { method: 'DELETE' });
-    }
+    const r = await fetch('/history', { method: 'DELETE' });
+    if (!r.ok) throw new Error('Server error');
+    const d = await r.json();
     state.entries = [];
+    state.selected.clear();
     renderHistory();
-    toast('History cleared');
+    toast(`History cleared (${d.deleted} entries)`);
   } catch (e) {
     toast('Clear failed');
   }

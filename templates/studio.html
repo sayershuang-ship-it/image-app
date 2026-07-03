@@ -644,7 +644,7 @@ async function init() {
   await checkHealth();
   updateButtons();
   updateCostBadge();
-  checkRestore();
+  await checkRestore();
   loadStats();
 }
 
@@ -881,17 +881,24 @@ async function checkHealth() {
   } catch (_) {}
 }
 
-function checkRestore() {
+async function checkRestore() {
   try {
     const saved = localStorage.getItem('image-studio-restore');
-    if (saved) {
-      const data = JSON.parse(saved);
-      if (data.prompt) promptInput.value = data.prompt;
-      localStorage.removeItem('image-studio-restore');
-      updateButtons();
-      toast('Prompt restored from history', 'success');
+    if (!saved) return;
+    localStorage.removeItem('image-studio-restore');
+    const data = JSON.parse(saved);
+    if (data.pid) {
+      const r = await fetch('/use-history/' + data.pid, { method: 'POST' });
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      if (d.prompt) promptInput.value = d.prompt;
+      if (d.image_b64) { state.imageB64 = d.image_b64; state.imageFile = null; renderUploadPreview(); }
+    } else if (data.prompt) {
+      promptInput.value = data.prompt;   // backward compat with old key shape
     }
-  } catch (_) {}
+    updateButtons();
+    toast('Prompt restored from history', 'success');
+  } catch (_) { toast('Restore failed', 'error'); }
 }
 
 uploadZone.addEventListener('click', () => fileInput.click());
