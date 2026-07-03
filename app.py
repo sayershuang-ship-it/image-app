@@ -445,10 +445,10 @@ def _resolve_vars(text: str, variables: dict) -> str:
     return re.sub(r'\{argument\s+name="([^"]+)"(?:\s+default="([^"]*)")?\s*\}', _sub, text)
 
 
-def _generate_gemini(job_id: str, prompt: str, image_b64: str,
+def _generate_gemini(prompt: str, image_b64: str, quality: str,
                      size: str, n: int, model: str,
-                     original_prompt: str = "") -> None:
-    """Run Gemini image generation and populate _jobs[job_id]."""
+                     original_prompt: str = "") -> list:
+    """Run Gemini image generation and return a list of result dicts."""
     from google.genai import types as genai_types
 
     client = get_google_client()
@@ -498,9 +498,22 @@ def _generate_gemini(job_id: str, prompt: str, image_b64: str,
                     results.append({"url": data_url, "revised_prompt": None,
                                      "cost_usd": unit_cost, "pid": pid})
 
+    return results
+
+
+def _finalize_job_success(job_id: str, results: list) -> None:
     with _jobs_lock:
         _jobs[job_id]["status"] = "done"
         _jobs[job_id]["results"] = results
+
+
+def _finalize_job_failure(job_id: str, prompt: str, image_b64: str, quality: str,
+                          size: str, model: str, exc: Exception) -> None:
+    save_prompt(prompt, image_b64, None, quality, size,
+                model, None, None, False, str(exc))
+    with _jobs_lock:
+        _jobs[job_id]["status"] = "failed"
+        _jobs[job_id]["error"] = str(exc)
 
 
 def _run_generation(job_id: str, prompt: str, image_b64: str,
@@ -512,8 +525,9 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
 
     try:
         if provider == "google":
-            _generate_gemini(job_id, prompt, image_b64, size, n, model,
-                             original_prompt=original_prompt)
+            results = _generate_gemini(prompt, image_b64, quality, size, n, model,
+                                       original_prompt=original_prompt)
+            _finalize_job_success(job_id, results)
             return
 
         # ── OpenAI path ──────────────────────────────────────────────────────────
@@ -567,16 +581,10 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
                 results.append({"url": data_url, "revised_prompt": item.revised_prompt,
                                  "cost_usd": unit_cost, "pid": pid})
 
-        with _jobs_lock:
-            _jobs[job_id]["status"] = "done"
-            _jobs[job_id]["results"] = results
+        _finalize_job_success(job_id, results)
 
     except Exception as exc:
-        save_prompt(prompt, image_b64, None, quality, size,
-                    model, None, None, False, str(exc))
-        with _jobs_lock:
-            _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"] = str(exc)
+        _finalize_job_failure(job_id, prompt, image_b64, quality, size, model, exc)
 
 
 @app.route("/generate", methods=["POST"])
