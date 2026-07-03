@@ -599,7 +599,7 @@
 
 {% block page_js %}
 <script>
-window._setKeySecret = {{ set_key_secret | tojson }};
+window._setKeyRequired = {{ set_key_secret_required | tojson }};
 const state = {
   imageB64: '',
   imageFile: null,
@@ -798,16 +798,20 @@ apiKeyInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); submitKey(); }
 });
 
+let _sessionSecret = null;
 async function submitKey() {
   const key = apiKeyInput.value.trim();
   if (!key) return;
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (window._setKeyRequired) {
+      if (!_sessionSecret) _sessionSecret = prompt('SET_KEY_SECRET required:');
+      if (!_sessionSecret) return;
+      headers['X-Set-Key-Secret'] = _sessionSecret;
+    }
     const r = await fetch('/set-key', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Set-Key-Secret': window._setKeySecret || ''
-      },
+      headers,
       body: JSON.stringify({ api_key: key })
     });
     const d = await r.json();

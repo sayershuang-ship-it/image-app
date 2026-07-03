@@ -663,15 +663,13 @@ async function generateImage() {
     if (data.error) throw new Error(data.error);
     const results = await pollJob(data.job_id);
     if (results && results.length > 0) {
+      // Render all results; download/copy targets the first image
       const r = results[0];
-      let imgSrc = '';
       if (r.url && r.url.startsWith('data:')) {
         currentImageB64 = r.url.split(',')[1] || '';
-        imgSrc = r.url;
-      } else if (r.url) {
-        imgSrc = r.url;
       }
-      document.getElementById('resultArea').innerHTML = `<img src="${imgSrc}" alt="Generated" />`;
+      document.getElementById('resultArea').innerHTML =
+        results.map(r => `<img src="${escAttr(r.url)}" alt="Generated" style="max-height:100%;max-width:${Math.floor(100 / results.length)}%;object-fit:contain" />`).join('');
       document.getElementById('downloadBar').classList.add('show');
       document.getElementById('dlFilename').textContent = `generated_${Date.now()}.png`;
       setStatus('Done!');
