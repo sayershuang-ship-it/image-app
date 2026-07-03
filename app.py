@@ -690,19 +690,31 @@ def set_tags(pid):
 @app.route("/api/search-prompts")
 def search_prompts():
     q = request.args.get("q", "").strip()
-    limit = min(int(request.args.get("limit", 8)), 20)
+    try:
+        limit = min(int(request.args.get("limit", 8)), 20)
+    except ValueError:
+        limit = 8
     if not q:
         return jsonify(results=[])
+    sanitized = q.replace('"', ' ').strip()
+    if not sanitized:
+        return jsonify(results=[])
+    match = " ".join(f'"{tok}"' for tok in sanitized.split())
+    if not q.endswith(" "):
+        match += "*"
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("""
-            SELECT c.id, c.title, c.category, c.prompt, c.image_url
-            FROM community_prompts_fts f
-            JOIN community_prompts c ON c.id = f.rowid
-            WHERE community_prompts_fts MATCH ?
-            ORDER BY rank
-            LIMIT ?
-        """, (q + "*", limit)).fetchall()
+        try:
+            rows = conn.execute("""
+                SELECT c.id, c.title, c.category, c.prompt, c.image_url
+                FROM community_prompts_fts f
+                JOIN community_prompts c ON c.id = f.rowid
+                WHERE community_prompts_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, (match, limit)).fetchall()
+        except sqlite3.OperationalError:
+            return jsonify(results=[])
     return jsonify(results=[dict(r) for r in rows])
 
 
@@ -826,7 +838,7 @@ def studio():
     return render_template("studio.html",
                            api_key_set=bool(os.environ.get("OPENAI_API_KEY")),
                            google_key_set=bool(GOOGLE_API_KEY),
-                           set_key_secret=os.environ.get("SET_KEY_SECRET", ""))
+                           set_key_secret_required=bool(os.environ.get("SET_KEY_SECRET")))
 
 
 @app.route("/gallery")
@@ -1090,7 +1102,7 @@ def fb_token_test():
 
 @app.route("/health")
 def health():
-    return jsonify(status="ok")
+    return jsonify(status="ok", api_key_set=bool(os.environ.get("OPENAI_API_KEY")))
 
 @app.route("/favicon.ico")
 def favicon():

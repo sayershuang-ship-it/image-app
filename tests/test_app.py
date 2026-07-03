@@ -11,7 +11,9 @@ import app as app_module
 def test_health(client):
     rv = client.get("/health")
     assert rv.status_code == 200
-    assert rv.get_json() == {"status": "ok"}
+    d = rv.get_json()
+    assert d["status"] == "ok"
+    assert isinstance(d["api_key_set"], bool)
 
 
 def test_index_renders(client):
@@ -35,6 +37,15 @@ def test_search_prompts_empty_query(client):
     rv = client.get("/api/search-prompts?q=")
     assert rv.status_code == 200
     assert rv.get_json() == {"results": []}
+
+
+def test_search_prompts_special_chars(client):
+    """/api/search-prompts handles quotes and non-numeric limit."""
+    rv = client.get("/api/search-prompts?q=%22quoted%22")
+    assert rv.status_code == 200
+    assert "results" in rv.get_json()
+    rv = client.get("/api/search-prompts?q=cat&limit=abc")
+    assert rv.status_code == 200
 
 
 def test_generate_requires_prompt(client):
