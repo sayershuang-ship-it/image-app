@@ -158,6 +158,22 @@ def init_db():
             INSERT OR IGNORE INTO community_prompts_fts(rowid, title, prompt, category)
             SELECT id, title, prompt, category FROM community_prompts
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL CHECK(source IN ('official', 'community')),
+                title TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT '',
+                prompt TEXT NOT NULL,
+                thumbnail_prompt TEXT NOT NULL DEFAULT '',
+                thumbnail_path TEXT,
+                platform TEXT,
+                author TEXT,
+                source_url TEXT,
+                score INTEGER,
+                community_prompt_id INTEGER
+            )
+        """)
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 THUMB_MAX = 512   # max dimension for stored thumbnails

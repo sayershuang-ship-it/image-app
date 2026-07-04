@@ -335,3 +335,14 @@ def test_job_status_unknown(client):
     """GET /job-status/<unknown> returns 404."""
     rv = client.get("/job-status/doesnotexist")
     assert rv.status_code == 404
+
+
+def test_templates_table_created(client):
+    """init_db() creates the templates table with the expected columns."""
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(templates)").fetchall()}
+    assert cols == {
+        "id", "source", "title", "category", "prompt", "thumbnail_prompt",
+        "thumbnail_path", "platform", "author", "source_url", "score",
+        "community_prompt_id",
+    }
