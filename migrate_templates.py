@@ -58,22 +58,26 @@ def insert_skeleton_rows(conn: sqlite3.Connection, official: list, community: li
             "SELECT community_prompt_id FROM templates WHERE community_prompt_id IS NOT NULL"
         ).fetchall()
     }
-    existing_official_titles = {
-        r[0] for r in conn.execute(
-            "SELECT title FROM templates WHERE source='official'"
+    existing_official_pairs = {
+        (r[0], r[1]) for r in conn.execute(
+            "SELECT title, prompt FROM templates WHERE source='official'"
         ).fetchall()
     }
 
     inserted = 0
     for item in official:
-        if item["title"] in existing_official_titles:
+        # Dedup by (title, prompt), not title alone: many official templates
+        # share the same title (e.g. "Standard" appears 13 times across
+        # different subcategories) but have distinct prompt text.
+        key = (item["title"], item["prompt"])
+        if key in existing_official_pairs:
             continue
         conn.execute(
             """INSERT INTO templates (source, title, prompt, category, thumbnail_prompt)
                VALUES ('official', ?, ?, '', '')""",
             (item["title"], item["prompt"]),
         )
-        existing_official_titles.add(item["title"])
+        existing_official_pairs.add(key)
         inserted += 1
 
     for row in community:

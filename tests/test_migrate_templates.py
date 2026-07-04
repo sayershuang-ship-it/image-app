@@ -55,6 +55,33 @@ def test_insert_skeleton_rows_is_idempotent():
         assert community_row["prompt"] == "A photo of a cat"
 
 
+def test_insert_skeleton_rows_keeps_official_templates_with_duplicate_titles():
+    """Many official templates share a title (e.g. 'Standard' appears 13x
+    across different subcategories) but have distinct prompt text — all of
+    them must be kept, not collapsed into one row by title alone."""
+    db_path = _fresh_db()
+    official = [
+        {"tab": "Design & Info", "subcategory": "UI & Interface",
+         "title": "Standard", "prompt": "Generate a [platform] UI screenshot..."},
+        {"tab": "Commerce & Space", "subcategory": "E-Commerce",
+         "title": "Standard", "prompt": "Generate an e-commerce hero image..."},
+    ]
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        inserted = mt.insert_skeleton_rows(conn, official, [])
+        assert inserted == 2
+
+        rows = conn.execute(
+            "SELECT title, prompt FROM templates WHERE source='official'"
+        ).fetchall()
+        assert len(rows) == 2
+        prompts = {r["prompt"] for r in rows}
+        assert prompts == {
+            "Generate a [platform] UI screenshot...",
+            "Generate an e-commerce hero image...",
+        }
+
+
 from unittest.mock import MagicMock
 
 
