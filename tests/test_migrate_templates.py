@@ -214,3 +214,41 @@ def test_main_dry_run_limits_classification_and_thumbnail_work(monkeypatch, tmp_
         thumbnailed = conn.execute("SELECT COUNT(*) FROM templates WHERE thumbnail_path IS NOT NULL").fetchone()[0]
     assert classified == 3
     assert thumbnailed == 3
+
+
+def test_main_continues_past_a_failed_classification_batch(monkeypatch, tmp_path):
+    """A batch that raises (e.g. malformed/truncated JSON from the model)
+    must not abort the whole run — later batches and Step D still run."""
+    db_path = _fresh_db()
+    monkeypatch.setattr(mt, "DB_PATH", db_path)
+    monkeypatch.setattr(mt, "STATIC_THUMB_DIR", str(tmp_path))
+    monkeypatch.setattr(mt, "OFFICIAL_JSON_PATH",
+                         os.path.join(os.path.dirname(__file__), "..", "official_templates.json"))
+
+    calls = {"n": 0}
+
+    def flaky_classify(client, batch):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ValueError("Unterminated string starting at: line 95 column 29")
+        return [{"id": r["id"], "category": mt.CATEGORIES[0], "thumbnail_prompt": "a concrete prompt"}
+                for r in batch]
+
+    def fake_generate_thumbnail(client, prompt, out_path):
+        with open(out_path, "wb") as f:
+            f.write(b"fake")
+        return True
+
+    monkeypatch.setattr(mt, "classify_batch", flaky_classify)
+    monkeypatch.setattr(mt, "generate_thumbnail", fake_generate_thumbnail)
+    monkeypatch.setattr(mt, "get_openai_client", lambda: MagicMock())
+    monkeypatch.setattr(mt, "get_gemini_client", lambda: MagicMock())
+    monkeypatch.setattr(mt, "build_batches", lambda rows, batch_size=20: [rows[:1], rows[1:2]])
+
+    # main() must not raise even though the first batch's classify_batch call does.
+    mt.main(["--dry-run", "2"])
+
+    with sqlite3.connect(db_path) as conn:
+        classified = conn.execute("SELECT COUNT(*) FROM templates WHERE category != ''").fetchone()[0]
+    # First (of 2) row's batch failed and was skipped; second row's batch succeeded.
+    assert classified == 1

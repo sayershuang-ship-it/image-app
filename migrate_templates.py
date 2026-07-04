@@ -142,7 +142,7 @@ def classify_batch(client, batch: list) -> list:
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": instructions}],
-        max_tokens=4000,
+        max_tokens=8000,
         temperature=0.2,
     )
     raw = response.choices[0].message.content.strip()
@@ -269,7 +269,12 @@ def main(argv=None):
         unclassified = get_unclassified_rows(conn, limit=limit)
         classified_count = 0
         for batch in build_batches(unclassified):
-            results = classify_batch(openai_client, batch)
+            try:
+                results = classify_batch(openai_client, batch)
+            except Exception as exc:
+                ids = [r["id"] for r in batch]
+                print(f"  [batch failed] ids={ids} — {exc}; will retry next run")
+                continue
             apply_classification_results(conn, results)
             classified_count += len(results)
         print(f"Step C: classified {classified_count}/{len(unclassified)} candidate rows.")
