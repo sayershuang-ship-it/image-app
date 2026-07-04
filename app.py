@@ -918,6 +918,38 @@ def community_prompts_api():
     return jsonify(grouped)
 
 
+@app.route("/api/templates")
+def templates_api():
+    """Return the unified templates table grouped by category."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT id, source, title, category, prompt, thumbnail_path,
+                   platform, author, source_url, score
+            FROM templates
+            ORDER BY category, id
+        """).fetchall()
+    grouped = {}
+    for r in rows:
+        cat = r["category"] or "其他／創意混搭 Comparisons, Mashups & Other"
+        if cat not in grouped:
+            grouped[cat] = []
+        thumb_path = r["thumbnail_path"]
+        thumbnail_url = f"/{thumb_path}" if thumb_path else None
+        grouped[cat].append({
+            "id": r["id"],
+            "title": r["title"],
+            "source": r["source"],
+            "prompt": r["prompt"],
+            "thumbnail_url": thumbnail_url,
+            "platform": r["platform"],
+            "author": r["author"],
+            "source_url": r["source_url"],
+            "score": r["score"],
+        })
+    return jsonify(grouped)
+
+
 # ── Facebook Routes ──────────────────────────────────────────────────────────
 def _load_page_token(page_id=""):
     """Load page token. If page_id provided, returns that page's token.

@@ -346,3 +346,31 @@ def test_templates_table_created(client):
         "thumbnail_path", "platform", "author", "source_url", "score",
         "community_prompt_id",
     }
+
+
+def test_api_templates_groups_by_category_and_nulls_missing_thumbnail(client):
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        conn.execute(
+            """INSERT INTO templates
+                   (source, title, category, prompt, thumbnail_prompt, thumbnail_path)
+               VALUES ('official', 'T1', 'UI 與介面設計 UI / App Interfaces', 'p1', 'tp1', NULL)"""
+        )
+        conn.execute(
+            """INSERT INTO templates
+                   (source, title, category, prompt, thumbnail_prompt, thumbnail_path,
+                    platform, author, source_url, score)
+               VALUES ('community', 'T2', '人像攝影 Portrait & Fashion Photography', 'p2', 'tp2',
+                       'static/template_thumbs/2.jpg', 'Instagram', 'someone', 'https://x.test', 5)"""
+        )
+
+    rv = client.get("/api/templates")
+    assert rv.status_code == 200
+    data = rv.get_json()
+
+    assert "UI 與介面設計 UI / App Interfaces" in data
+    assert data["UI 與介面設計 UI / App Interfaces"][0]["thumbnail_url"] is None
+
+    portrait_items = data["人像攝影 Portrait & Fashion Photography"]
+    assert portrait_items[0]["thumbnail_url"] == "/static/template_thumbs/2.jpg"
+    assert portrait_items[0]["source"] == "community"
+    assert portrait_items[0]["platform"] == "Instagram"
