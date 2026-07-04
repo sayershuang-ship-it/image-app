@@ -103,14 +103,16 @@
 .cat-items { overflow: hidden; transition: max-height 0.3s; }
 .cat-items.hidden { max-height: 0 !important; }
 .tpl-item {
-  padding: 7px 12px 7px 20px;
+  padding: 8px 12px 8px 20px;
   font-size: 13px;
   cursor: pointer;
   color: var(--muted);
+  transition: all 0.12s;
+}
+.tpl-item span {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: all 0.12s;
 }
 .tpl-item:hover { background: var(--border); color: var(--fg); }
 .tpl-item.selected { color: var(--accent); background: oklch(from var(--accent) l c h / 0.06); }
@@ -350,8 +352,8 @@ function renderTemplateList() {
   list.innerHTML = cats.map(([cat, items]) => {
     const itemHtml = items.map((t, i) => {
       const thumbTag = t.thumbnail_url
-        ? '<img src="' + escAttr(t.thumbnail_url) + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;margin-right:8px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
-        : '<div style="width:40px;height:40px;border-radius:4px;margin-right:8px;flex-shrink:0;background:var(--border)"></div>';
+        ? '<img src="' + escAttr(t.thumbnail_url) + '" style="width:64px;height:64px;object-fit:cover;border-radius:6px;margin-right:10px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
+        : '<div style="width:64px;height:64px;border-radius:6px;margin-right:10px;flex-shrink:0;background:var(--border)"></div>';
       return '<div class="tpl-item" data-cat="' + escAttr(cat) + '" data-idx="' + i +
              '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' +
              thumbTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + escHtml(t.title) + '</span></div>';
