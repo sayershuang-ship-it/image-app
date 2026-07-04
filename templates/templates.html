@@ -5,7 +5,7 @@
 {% block page_css %}
 /* ── Templates page styles — inherits Modern Minimal tokens from app.css ── */
 .wordmark {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 590;
 }
 
@@ -36,13 +36,13 @@
 }
 .sidebar-header h2 {
   font-family: var(--font-display);
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 500;
   letter-spacing: -0.01em;
 }
 .sidebar-header .badge {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 510;
   color: var(--accent);
   text-transform: uppercase;
@@ -61,7 +61,7 @@
   flex: 0 0 auto;
   padding: 10px 14px;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 510;
   color: var(--muted);
   cursor: pointer;
@@ -83,7 +83,7 @@
 .category { margin-bottom: 4px; }
 .cat-header {
   padding: 10px 12px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 510;
   text-transform: uppercase;
   color: var(--muted);
@@ -104,7 +104,7 @@
   background: var(--border);
 }
 .cat-header .arrow {
-  font-size: 10px;
+  font-size: 12px;
   transition: transform 0.2s;
 }
 .cat-header.collapsed .arrow { transform: rotate(-90deg); }
@@ -112,7 +112,7 @@
 .cat-items.hidden { max-height: 0 !important; }
 .tpl-item {
   padding: 8px 12px 8px 20px;
-  font-size: 13px;
+  font-size: 15px;
   cursor: pointer;
   color: var(--muted);
   transition: all 0.12s;
@@ -142,7 +142,7 @@
 }
 .toolbar label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -152,7 +152,7 @@
   border: 1px solid var(--border);
   color: var(--fg);
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: 14px;
   font-family: var(--font-body);
   transition: border-color var(--ease);
 }
@@ -174,7 +174,7 @@
   border: 1px solid var(--border);
   color: var(--fg);
   padding: 14px;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.6;
   resize: none;
   font-family: var(--font-mono);
@@ -186,7 +186,7 @@
 .btn-row { display: flex; gap: 10px; align-items: center; }
 .btn {
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 590;
   padding: 10px 20px;
   cursor: pointer;
@@ -206,7 +206,7 @@
 .btn-secondary:hover { border-color: var(--accent); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .status {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--muted);
   font-family: var(--font-mono);
 }
@@ -225,8 +225,8 @@
   max-height: 100%;
   object-fit: contain;
 }
-.result-area .empty { color: var(--muted); font-size: 14px; }
-.result-area .loading { color: var(--accent); font-size: 14px; animation: pulse 1.2s infinite; }
+.result-area .empty { color: var(--muted); font-size: 16px; }
+.result-area .loading { color: var(--accent); font-size: 16px; animation: pulse 1.2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .download-bar {
@@ -237,7 +237,7 @@
   align-items: center;
 }
 .download-bar.show { display: flex; }
-.download-bar .filename { font-size: 12px; color: var(--muted); flex: 1; }
+.download-bar .filename { font-size: 14px; color: var(--muted); flex: 1; }
 
 @media (max-width: 860px) {
   .workspace { flex-direction: column; }
@@ -254,7 +254,7 @@
       </div>
       <div style="padding:10px 20px;border-bottom:1px solid var(--border)">
         <input type="text" id="templateSearchInput" placeholder="語意搜尋模板…"
-               style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--fg);padding:8px 10px;font-size:13px;font-family:var(--font-body)" />
+               style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--fg);padding:8px 10px;font-size:15px;font-family:var(--font-body)" />
       </div>
       <div class="template-list" id="templateList"></div>
     </aside>
@@ -397,7 +397,7 @@ function renderTemplateList() {
     return '<div class="category"><div class="cat-header" onclick="toggleCat(this)">' +
            '<span style="display:flex;align-items:center;gap:8px;overflow:hidden">' + coverTag +
            '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(cat) + '</span></span>' +
-           '<span class="badge" style="font-size:10px;color:var(--muted);margin-left:auto;margin-right:4px">' +
+           '<span class="badge" style="font-size:12px;color:var(--muted);margin-left:auto;margin-right:4px">' +
            items.length + '</span><span class="arrow">▼</span></div><div class="cat-items" style="max-height:' + (items.length * 140 + 40) + 'px">' +
            itemHtml + '</div></div>';
   }).join('');

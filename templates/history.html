@@ -5,7 +5,7 @@
 {% block page_css %}
 /* ── History page styles — inherits Modern Minimal tokens from app.css ── */
 .wordmark {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 590;
 }
 
@@ -24,14 +24,14 @@
 .toolbar-left { display: flex; align-items: center; gap: 12px; }
 .toolbar-left h2 {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
 }
 .toolbar-count {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 15px;
   color: var(--fg);
   font-feature-settings: "tnum";
 }
@@ -45,7 +45,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--fg);
-  font: 14px var(--font-body);
+  font: 16px var(--font-body);
   padding: 8px 36px 8px 14px;
   transition: border-color var(--ease);
 }
@@ -56,13 +56,13 @@
   right: 10px; top: 50%;
   transform: translateY(-50%);
   color: var(--muted);
-  font-size: 13px;
+  font-size: 15px;
   pointer-events: none;
 }
 .toolbar-actions { display: flex; gap: 8px; }
 .btn-sm {
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 510;
   padding: 6px 14px;
   border: 1px solid var(--border);
@@ -72,7 +72,7 @@
   transition: border-color var(--ease), color var(--ease);
 }
 .btn-sm:hover { border-color: var(--fg); color: var(--fg); }
-.btn-sm.danger:hover { border-color: oklch(55% 0.17 25); color: oklch(55% 0.17 25); }
+.btn-sm.danger:hover { border-color: var(--danger); color: var(--danger); }
 
 /* ── History List ───────────────────────────────────── */
 .history-scroll {
@@ -107,7 +107,7 @@
 .history-thumb svg { width: 100%; height: 100%; }
 .history-body { flex: 1; min-width: 0; }
 .history-prompt {
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.5;
   color: var(--fg);
   margin-bottom: 8px;
@@ -124,7 +124,7 @@
 }
 .history-meta span {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted);
   letter-spacing: 0.02em;
 }
@@ -132,19 +132,19 @@
   display: inline-block;
   padding: 2px 8px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   font-weight: 510;
 }
-.status-badge.ok { color: oklch(58% 0.12 160); background: oklch(58% 0.12 160 / 0.08); }
-.status-badge.fail { color: oklch(55% 0.17 25); background: oklch(55% 0.17 25 / 0.08); }
+.status-badge.ok { color: var(--success); background: oklch(from var(--success) l c h / 0.08); }
+.status-badge.fail { color: var(--danger); background: oklch(from var(--danger) l c h / 0.08); }
 .ref-tag {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--accent);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 .history-actions {
   display: flex;
@@ -160,21 +160,21 @@
   background: var(--bg);
   color: var(--muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: border-color var(--ease), color var(--ease);
 }
 .icon-btn:hover { border-color: var(--fg); color: var(--fg); }
-.icon-btn.danger:hover { border-color: oklch(55% 0.17 25); color: oklch(55% 0.17 25); }
-.icon-btn.star-btn { font-size: 16px; color: var(--border); }
-.icon-btn.star-btn.starred { color: oklch(75% 0.18 80); border-color: oklch(75% 0.18 80 / 0.4); }
+.icon-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+.icon-btn.star-btn { font-size: 18px; color: var(--border); }
+.icon-btn.star-btn.starred { color: var(--star); border-color: oklch(from var(--star) l c h / 0.4); }
 .cost-chip {
   font-family: var(--font-mono);
-  font-size: 10px;
-  color: oklch(58% 0.12 160);
-  background: oklch(58% 0.12 160 / 0.08);
+  font-size: 12px;
+  color: var(--success);
+  background: oklch(from var(--success) l c h / 0.08);
   padding: 2px 7px;
   letter-spacing: 0.02em;
 }
@@ -184,7 +184,7 @@
   text-align: center;
   padding: 80px 24px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 17px;
   max-width: 900px;
   display: flex;
   flex-direction: column;
@@ -199,16 +199,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 24px;
 }
 .history-empty a {
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 590;
   padding: 10px 24px;
   border-radius: var(--radius);
   background: var(--accent);
-  color: #fff;
+  color: var(--fg);
   text-decoration: none;
   letter-spacing: 0.01em;
   transition: opacity var(--ease);
@@ -251,7 +251,7 @@
 }
 .sidebar-header h2 {
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 500;
   letter-spacing: -0.01em;
 }
@@ -261,7 +261,7 @@
   background: var(--bg);
   color: var(--muted);
   cursor: pointer;
-  font-size: 16px;
+  font-size: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -277,18 +277,18 @@
 }
 .sidebar-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
 }
 .sidebar-prompt {
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.65;
   color: var(--fg);
 }
 .sidebar-revised {
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.6;
   color: var(--muted);
   border-left: 2px solid var(--accent);
@@ -306,14 +306,14 @@
 }
 .sidebar-meta-item .label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
   margin-bottom: 4px;
 }
 .sidebar-meta-item .value {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--fg);
   font-feature-settings: "tnum";
 }
@@ -327,7 +327,7 @@
 }
 .sidebar-actions .btn {
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 590;
   padding: 10px 20px;
   border-radius: 4px;
@@ -341,8 +341,8 @@
 .btn-outline { background: transparent; color: var(--fg); border: 1px solid var(--fg) !important; }
 .btn-danger-text {
   background: transparent;
-  color: oklch(55% 0.17 25);
-  font-size: 13px !important;
+  color: var(--danger);
+  font-size: 15px !important;
   font-weight: 500 !important;
   padding: 8px 16px !important;
 }
@@ -362,11 +362,11 @@
   border: 1px solid var(--border);
   color: var(--fg);
   padding: 12px 20px;
-  font-size: 14px;
+  font-size: 16px;
   animation: slideIn 0.25s ease;
   max-width: 360px;
 }
-.toast.success { border-left: 3px solid oklch(58% 0.12 160); }
+.toast.success { border-left: 3px solid var(--success); }
 @keyframes slideIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 700px) {
@@ -540,7 +540,7 @@ function renderHistory() {
           ${e.cost != null ? `<span class="cost-chip">$${e.cost.toFixed(3)}</span>` : ''}
           ${e.hasImage ? '<span class="ref-tag">+reference</span>' : ''}
           <span class="status-badge ${e.success ? 'ok' : 'fail'}">${e.success ? 'ok' : 'fail'}</span>
-          ${e.tags ? `<span style="color:var(--accent);font-size:11px">${escHtml(e.tags)}</span>` : ''}
+          ${e.tags ? `<span style="color:var(--accent);font-size:13px">${escHtml(e.tags)}</span>` : ''}
         </div>
       </div>
       <div class="history-actions">

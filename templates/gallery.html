@@ -5,7 +5,7 @@
 {% block page_css %}
 /* ── Gallery page styles — inherits Modern Minimal tokens from app.css ── */
 .wordmark {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 590;
 }
 
@@ -24,21 +24,21 @@
 .toolbar-left { display: flex; align-items: center; gap: 12px; }
 .toolbar-left h2 {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
 }
 .toolbar-count {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 15px;
   color: var(--fg);
   font-feature-settings: "tnum";
 }
 .toolbar-right { display: flex; align-items: center; gap: 8px; }
 .filter-btn {
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 510;
   padding: 5px 12px;
   border: 1px solid var(--border);
@@ -75,14 +75,14 @@
 .card-star-badge {
   position: absolute;
   top: 8px; right: 8px;
-  color: oklch(75% 0.18 80);
-  font-size: 16px;
+  color: var(--star);
+  font-size: 18px;
   text-shadow: 0 1px 3px oklch(0% 0 0 / 0.5);
   pointer-events: none;
 }
 .btn-sm {
   font-family: var(--font-body);
-  font-size: 12px; font-weight: 510;
+  font-size: 14px; font-weight: 510;
   padding: 5px 12px;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -110,9 +110,9 @@
 .gallery-card:hover .card-overlay { opacity: 1; }
 .card-overlay .card-meta {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: oklch(100% 0 0 / 0.7);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .card-overlay .btn-ghost {
@@ -120,10 +120,10 @@
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   border: 1px solid oklch(100% 0 0 / 0.2);
-  color: #fff;
+  color: var(--fg);
   padding: 5px 12px;
   border-radius: 2px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 510;
   cursor: pointer;
   transition: background var(--ease);
@@ -138,7 +138,7 @@
   justify-content: center;
   padding: 100px 24px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: 17px;
   text-align: center;
   gap: 20px;
 }
@@ -150,16 +150,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 24px;
 }
 .gallery-empty a {
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 590;
   padding: 10px 24px;
   border-radius: var(--radius);
   background: var(--accent);
-  color: #fff;
+  color: var(--fg);
   text-decoration: none;
   letter-spacing: 0.01em;
   transition: opacity var(--ease);
@@ -200,7 +200,7 @@
   background: var(--surface);
   color: var(--fg);
   cursor: pointer;
-  font-size: 18px;
+  font-size: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -233,7 +233,7 @@
 }
 .modal-sidebar h3 {
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 500;
   letter-spacing: -0.01em;
   line-height: 1.25;
@@ -247,18 +247,18 @@
 }
 .modal-meta-row .label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
 }
 .modal-meta-row .value {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--fg);
   font-feature-settings: "tnum";
 }
 .modal-prompt {
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.6;
   color: var(--muted);
   border-left: 2px solid var(--accent);
@@ -272,7 +272,7 @@
 }
 .modal-actions .btn {
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 590;
   padding: 10px 20px;
   border-radius: 4px;
@@ -293,17 +293,17 @@
   border: 1px solid var(--border);
   color: var(--fg);
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: 15px;
   font-family: var(--font-body);
   width: 100%;
   transition: border-color var(--ease);
 }
 .fb-panel select:focus, .fb-panel textarea:focus { outline: none; border-color: var(--accent); }
-.fb-panel textarea { min-height: 60px; resize: vertical; font-size: 12px; }
+.fb-panel textarea { min-height: 60px; resize: vertical; font-size: 14px; }
 .fb-panel .fb-actions { display: flex; gap: 8px; }
-.fb-panel .fb-actions .btn { flex: 1; font-size: 13px; padding: 8px 14px; }
+.fb-panel .fb-actions .btn { flex: 1; font-size: 15px; padding: 8px 14px; }
 .fb-auth-hint {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--muted);
   line-height: 1.5;
 }
@@ -323,11 +323,11 @@
   border: 1px solid var(--border);
   color: var(--fg);
   padding: 12px 20px;
-  font-size: 14px;
+  font-size: 16px;
   animation: slideIn 0.25s ease;
   max-width: 360px;
 }
-.toast.success { border-left: 3px solid oklch(58% 0.12 160); }
+.toast.success { border-left: 3px solid var(--success); }
 @keyframes slideIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 860px) {

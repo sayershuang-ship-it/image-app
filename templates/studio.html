@@ -4,7 +4,7 @@
 {% block badge %}{% if api_key_set %}<span class="api-badge ok" id="api-badge">API Key Ready</span>{% else %}<span class="api-badge no" id="api-badge">API Key not set</span>{% endif %}{% endblock %}
 {% block nav_actions %}
     <div class="topbar-actions">
-      <input type="password" id="api-key-input" placeholder="OpenAI API Key" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--fg);padding:5px 10px;font-size:12px;width:200px;display:none" />
+      <input type="password" id="api-key-input" placeholder="OpenAI API Key" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--fg);padding:5px 10px;font-size:14px;width:200px;display:none" />
       <button class="nav-btn" id="api-key-btn" title="Set API Key">Key</button>
       <a href="/gallery" class="nav-btn">Gallery</a>
       <a href="/history-view" class="nav-btn">History</a>
@@ -18,7 +18,7 @@
 {% block page_css %}
 /* ── Studio page styles — inherits Modern Minimal tokens from app.css ── */
 .wordmark {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 590;
   white-space: nowrap;
 }
@@ -36,7 +36,7 @@
 }
 
 .api-badge {
-  font-size: 11px;
+  font-size: 13px;
   padding: 3px 10px;
   border-radius: 100px;
   letter-spacing: 0.02em;
@@ -56,7 +56,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
+  font-size: 17px;
   transition: border-color var(--ease), color var(--ease);
   flex-shrink: 0;
 }
@@ -104,7 +104,7 @@
 .upload-zone.has-image { padding: 10px; }
 .upload-zone .placeholder-text {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
 }
 .upload-zone .placeholder-text strong {
@@ -127,7 +127,7 @@
   background: var(--surface);
   color: var(--muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -138,7 +138,7 @@
 /* ── Prompt Area ──────────────────────────────────────── */
 .prompt-area { display: flex; flex-direction: column; gap: 6px; }
 .prompt-area label {
-  font-size: 11px;
+  font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
@@ -151,7 +151,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--fg);
-  font: 15px/1.6 var(--font-body);
+  font: 17px/1.6 var(--font-body);
   padding: 14px 16px;
   resize: vertical;
   transition: border-color var(--ease);
@@ -177,7 +177,7 @@
   min-width: 0;
 }
 .control-group label {
-  font-size: 10px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
@@ -188,7 +188,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--fg);
-  font: 14px var(--font-body);
+  font: 16px var(--font-body);
   padding: 8px 32px 8px 12px;
   cursor: pointer;
   appearance: none;
@@ -207,7 +207,7 @@
 }
 .btn {
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 590;
   padding: 10px 20px;
   border-radius: var(--radius);
@@ -251,7 +251,7 @@
   margin-bottom: 16px;
 }
 .gallery-header h2 {
-  font-size: 13px;
+  font-size: 15px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
@@ -298,7 +298,7 @@
   color: var(--fg);
   padding: 6px 14px;
   border-radius: 100px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 510;
   cursor: pointer;
   transition: background var(--ease);
@@ -312,14 +312,14 @@
   justify-content: center;
   padding: 80px 24px;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 16px;
   text-align: center;
   border: 2px dashed var(--border);
   border-radius: var(--radius-lg);
   grid-column: 1 / -1;
 }
 .gallery-empty-icon {
-  font-size: 40px;
+  font-size: 42px;
   margin-bottom: 16px;
   opacity: 0.4;
 }
@@ -340,7 +340,7 @@
   color: var(--fg);
   padding: 12px 20px;
   border-radius: var(--radius);
-  font-size: 14px;
+  font-size: 16px;
   box-shadow: 0 2px 8px oklch(0% 0 0 / 0.08);
   animation: slideIn 0.25s ease;
   max-width: 360px;
@@ -378,12 +378,12 @@
   animation: spin 0.8s linear infinite;
 }
 .gen-label {
-  font-size: 15px;
+  font-size: 17px;
   color: var(--muted);
   letter-spacing: 0.02em;
 }
 .gen-elapsed {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--muted);
   opacity: 0.6;
   font-variant-numeric: tabular-nums;
@@ -391,7 +391,7 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .cost-badge {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted);
   padding: 2px 8px;
   border: 1px solid var(--border);
@@ -401,7 +401,7 @@
 .cost-badge.accent { color: var(--accent); border-color: var(--accent); }
 
 .session-cost {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted);
   letter-spacing: 0.02em;
 }
@@ -423,7 +423,7 @@
 .suggestion-item {
   padding: 9px 14px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 15px;
   border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -432,7 +432,7 @@
 .suggestion-item:last-child { border-bottom: none; }
 .suggestion-item:hover { background: var(--border); }
 .suggestion-item .sug-title { font-weight: 500; color: var(--fg); }
-.suggestion-item .sug-cat { font-size: 11px; color: var(--muted); }
+.suggestion-item .sug-cat { font-size: 13px; color: var(--muted); }
 .prompt-area { position: relative; }
 
 /* ── Batch mode ───────────────────────────────────────── */
@@ -440,17 +440,17 @@
 .batch-area.visible { display: flex; }
 .batch-area textarea {
   min-height: 100px;
-  font-size: 13px;
+  font-size: 15px;
   resize: vertical;
 }
-.batch-hint { font-size: 11px; color: var(--muted); }
+.batch-hint { font-size: 13px; color: var(--muted); }
 .mode-toggle {
   display: flex; gap: 4px;
 }
 .mode-btn {
   flex: 1;
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
@@ -468,7 +468,7 @@
 .card-star {
   position: absolute;
   top: 8px; left: 8px;
-  font-size: 18px;
+  font-size: 20px;
   cursor: pointer;
   opacity: 0;
   transition: opacity var(--ease);
@@ -482,7 +482,7 @@
 .card-star.starred { opacity: 1; }
 
 .batch-progress { grid-column: 1/-1; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
-.batch-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.batch-item { display: flex; align-items: center; gap: 10px; font-size: 15px; }
 .batch-item .bp-status { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; }
 .batch-item .bp-status.running { border: 2px solid var(--border); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
 .batch-item .bp-status.done { background: var(--success); }
@@ -1058,7 +1058,7 @@ async function doBatchGenerate() {
         }
       } catch (err) {
         const slot = document.getElementById(`batch-item-${i}`);
-        if (slot) slot.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:8px">Failed: ${escHtml(err.message)}</div>`;
+        if (slot) slot.innerHTML = `<div style="color:var(--muted);font-size:14px;padding:8px">Failed: ${escHtml(err.message)}</div>`;
       }
     }));
 
