@@ -98,7 +98,12 @@ def get_unclassified_rows(conn: sqlite3.Connection, limit=None) -> list:
     query = "SELECT id, title, prompt FROM templates WHERE category = ''"
     if limit is not None:
         query += f" LIMIT {int(limit)}"
-    return conn.execute(query).fetchall()
+    saved = conn.row_factory
+    conn.row_factory = sqlite3.Row
+    try:
+        return conn.execute(query).fetchall()
+    finally:
+        conn.row_factory = saved
 
 
 def build_batches(rows: list, batch_size: int = 20) -> list:
@@ -163,6 +168,68 @@ def apply_classification_results(conn: sqlite3.Connection, results: list) -> Non
             (r["category"], r["thumbnail_prompt"], r["id"]),
         )
     conn.commit()
+
+
+def get_rows_needing_thumbnail(conn: sqlite3.Connection, limit=None) -> list:
+    query = ("SELECT id, thumbnail_prompt FROM templates "
+             "WHERE thumbnail_path IS NULL AND thumbnail_prompt != ''")
+    if limit is not None:
+        query += f" LIMIT {int(limit)}"
+    saved = conn.row_factory
+    conn.row_factory = sqlite3.Row
+    try:
+        return conn.execute(query).fetchall()
+    finally:
+        conn.row_factory = saved
+
+
+def generate_thumbnail(client, thumbnail_prompt: str, out_path: str) -> bool:
+    """Generate one square thumbnail via Gemini and save it to out_path.
+    Never raises — returns False on any failure so batch runs can continue."""
+    try:
+        from google.genai import types as genai_types
+
+        config = genai_types.GenerateContentConfig(
+            response_modalities=["IMAGE", "TEXT"],
+            image_config=genai_types.ImageConfig(aspect_ratio="1:1"),
+        )
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite-image",
+            contents=[thumbnail_prompt],
+            config=config,
+        )
+        for candidate in response.candidates:
+            if not candidate.content or not candidate.content.parts:
+                continue
+            for part in candidate.content.parts:
+                if part.inline_data and part.inline_data.mime_type and \
+                   part.inline_data.mime_type.startswith("image/"):
+                    with open(out_path, "wb") as f:
+                        f.write(part.inline_data.data)
+                    return True
+        return False
+    except Exception as exc:
+        print(f"  [thumbnail failed] {exc}")
+        return False
+
+
+def run_thumbnail_batch(conn: sqlite3.Connection, client, static_dir: str, limit=None) -> tuple:
+    os.makedirs(static_dir, exist_ok=True)
+    rows = get_rows_needing_thumbnail(conn, limit=limit)
+    succeeded, failed = 0, 0
+    for row in rows:
+        rel_path = os.path.join("static", "template_thumbs", f"{row['id']}.jpg")
+        out_path = os.path.join(static_dir, f"{row['id']}.jpg")
+        if generate_thumbnail(client, row["thumbnail_prompt"], out_path):
+            conn.execute(
+                "UPDATE templates SET thumbnail_path = ? WHERE id = ?",
+                (rel_path, row["id"]),
+            )
+            conn.commit()
+            succeeded += 1
+        else:
+            failed += 1
+    return succeeded, failed
 
 
 def main():

@@ -97,3 +97,63 @@ def test_apply_classification_results_updates_rows():
         row = conn.execute("SELECT category, thumbnail_prompt FROM templates WHERE id=1").fetchone()
         assert row[0] == "人像攝影 Portrait & Fashion Photography"
         assert row[1] == "A concrete rewritten prompt"
+
+
+def test_generate_thumbnail_writes_file_and_returns_true(tmp_path):
+    fake_part = MagicMock()
+    fake_part.inline_data.mime_type = "image/jpeg"
+    fake_part.inline_data.data = b"\xff\xd8\xff\xe0fakejpegbytes"
+    fake_candidate = MagicMock()
+    fake_candidate.content.parts = [fake_part]
+    fake_response = MagicMock()
+    fake_response.candidates = [fake_candidate]
+
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = fake_response
+
+    out_path = str(tmp_path / "1.jpg")
+    ok = mt.generate_thumbnail(fake_client, "a cat sitting on a windowsill", out_path)
+
+    assert ok is True
+    with open(out_path, "rb") as f:
+        assert f.read() == b"\xff\xd8\xff\xe0fakejpegbytes"
+
+
+def test_generate_thumbnail_returns_false_on_no_image_data(tmp_path):
+    fake_response = MagicMock()
+    fake_response.candidates = []
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = fake_response
+
+    out_path = str(tmp_path / "2.jpg")
+    ok = mt.generate_thumbnail(fake_client, "a prompt", out_path)
+
+    assert ok is False
+    assert not os.path.exists(out_path)
+
+
+def test_run_thumbnail_batch_sets_thumbnail_path(tmp_path):
+    db_path = _fresh_db()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """INSERT INTO templates (id, source, title, prompt, category, thumbnail_prompt)
+               VALUES (1, 'official', 'T1', 'p', 'cat', 'a concrete prompt')"""
+        )
+        conn.commit()
+
+        fake_part = MagicMock()
+        fake_part.inline_data.mime_type = "image/jpeg"
+        fake_part.inline_data.data = b"\xff\xd8fakejpeg"
+        fake_candidate = MagicMock()
+        fake_candidate.content.parts = [fake_part]
+        fake_response = MagicMock()
+        fake_response.candidates = [fake_candidate]
+        fake_client = MagicMock()
+        fake_client.models.generate_content.return_value = fake_response
+
+        succeeded, failed = mt.run_thumbnail_batch(conn, fake_client, str(tmp_path))
+
+        assert (succeeded, failed) == (1, 0)
+        row = conn.execute("SELECT thumbnail_path FROM templates WHERE id=1").fetchone()
+        assert row[0] == "static/template_thumbs/1.jpg"
+        assert os.path.exists(os.path.join(str(tmp_path), "1.jpg"))
