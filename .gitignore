@@ -12,3 +12,6 @@ prompts.db
 prompts.db-wal
 prompts.db-shm
 808ai_prompts_data.json
+gpt-image-skill/
+ultimate-chatgpt-image-prompts/
+static/template_thumbs/
