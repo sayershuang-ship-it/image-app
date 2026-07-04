@@ -53,3 +53,47 @@ def test_insert_skeleton_rows_is_idempotent():
         ).fetchone()
         assert community_row["community_prompt_id"] == community_id
         assert community_row["prompt"] == "A photo of a cat"
+
+
+from unittest.mock import MagicMock
+
+
+def test_classify_batch_parses_response_and_validates_category():
+    fake_response = MagicMock()
+    fake_response.choices = [MagicMock()]
+    fake_response.choices[0].message.content = (
+        '[{"id": 1, "category": "人像攝影 Portrait & Fashion Photography", '
+        '"thumbnail_prompt": "A 35mm film portrait of a young woman in soft window light"},'
+        '{"id": 2, "category": "not-a-real-category", "thumbnail_prompt": "x"}]'
+    )
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = fake_response
+
+    row1 = {"id": 1, "title": "T1", "prompt": "some prompt"}
+    row2 = {"id": 2, "title": "T2", "prompt": "some other prompt"}
+    results = mt.classify_batch(fake_client, [row1, row2])
+
+    # Row 1: valid category, kept as-is.
+    assert results[0] == {
+        "id": 1,
+        "category": "人像攝影 Portrait & Fashion Photography",
+        "thumbnail_prompt": "A 35mm film portrait of a young woman in soft window light",
+    }
+    # Row 2: invalid category from the model, dropped rather than written.
+    assert len(results) == 1
+
+
+def test_apply_classification_results_updates_rows():
+    db_path = _fresh_db()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """INSERT INTO templates (id, source, title, prompt, category, thumbnail_prompt)
+               VALUES (1, 'official', 'T1', 'some prompt', '', '')"""
+        )
+        mt.apply_classification_results(conn, [
+            {"id": 1, "category": "人像攝影 Portrait & Fashion Photography",
+             "thumbnail_prompt": "A concrete rewritten prompt"},
+        ])
+        row = conn.execute("SELECT category, thumbnail_prompt FROM templates WHERE id=1").fetchone()
+        assert row[0] == "人像攝影 Portrait & Fashion Photography"
+        assert row[1] == "A concrete rewritten prompt"
