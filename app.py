@@ -69,6 +69,31 @@ def get_google_client():
     return _google_client
 
 
+OLLAMA_URL = "http://localhost:11434"
+
+
+def embed_text(text: str, model: str = "bge-m3") -> list:
+    """Embed text via the local Ollama daemon. Raises on any failure —
+    callers (batch script, search endpoint) decide how to handle it."""
+    response = requests.post(
+        f"{OLLAMA_URL}/api/embed",
+        json={"model": model, "input": text},
+        timeout=30,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data["embeddings"][0]
+
+
+def cosine_similarity(a: list, b: list) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(y * y for y in b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
 def _upsert_key_file(name: str, value: str) -> None:
     """Update or append NAME=value in KEY_FILE, preserving other lines."""
     lines = []

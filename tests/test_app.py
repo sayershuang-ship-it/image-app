@@ -389,3 +389,28 @@ def test_templates_table_has_embedding_column(client):
     with sqlite3.connect(app_module.DB_PATH) as conn:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(templates)").fetchall()}
     assert "embedding" in cols
+
+
+def test_cosine_similarity_identical_vectors_is_one():
+    assert app_module.cosine_similarity([1.0, 0.0], [1.0, 0.0]) == 1.0
+
+
+def test_cosine_similarity_orthogonal_vectors_is_zero():
+    assert app_module.cosine_similarity([1.0, 0.0], [0.0, 1.0]) == 0.0
+
+
+def test_embed_text_posts_to_ollama_and_returns_first_vector():
+    fake_response = MagicMock()
+    fake_response.json.return_value = {
+        "model": "bge-m3",
+        "embeddings": [[0.1, 0.2, 0.3]],
+    }
+    fake_response.raise_for_status.return_value = None
+    with patch("app.requests.post", return_value=fake_response) as mock_post:
+        vec = app_module.embed_text("hello world")
+    assert vec == [0.1, 0.2, 0.3]
+    mock_post.assert_called_once_with(
+        "http://localhost:11434/api/embed",
+        json={"model": "bge-m3", "input": "hello world"},
+        timeout=30,
+    )
