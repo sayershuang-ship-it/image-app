@@ -414,3 +414,40 @@ def test_embed_text_posts_to_ollama_and_returns_first_vector():
         json={"model": "bge-m3", "input": "hello world"},
         timeout=30,
     )
+
+
+def test_api_templates_search_returns_top_matches_sorted_by_similarity(client):
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        conn.execute(
+            "INSERT INTO templates (id, source, title, category, prompt, "
+            "thumbnail_prompt, thumbnail_path, embedding) VALUES "
+            "(1, 'official', 'Close Match', 'cat', 'p1', 'tp1', NULL, ?)",
+            (json.dumps([1.0, 0.0]).encode(),),
+        )
+        conn.execute(
+            "INSERT INTO templates (id, source, title, category, prompt, "
+            "thumbnail_prompt, thumbnail_path, embedding) VALUES "
+            "(2, 'community', 'Far Match', 'cat', 'p2', 'tp2', 'static/template_thumbs/2.jpg', ?)",
+            (json.dumps([0.0, 1.0]).encode(),),
+        )
+
+    with patch("app.embed_text", return_value=[0.9, 0.1]):
+        rv = client.get("/api/templates/search?q=test+query")
+
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert [item["title"] for item in data] == ["Close Match", "Far Match"]
+    assert data[0]["similarity"] > data[1]["similarity"]
+    assert data[1]["thumbnail_url"] == "/static/template_thumbs/2.jpg"
+
+
+def test_api_templates_search_requires_q(client):
+    rv = client.get("/api/templates/search")
+    assert rv.status_code == 400
+
+
+def test_api_templates_search_returns_503_when_ollama_unreachable(client):
+    with patch("app.embed_text", side_effect=ConnectionError("refused")):
+        rv = client.get("/api/templates/search?q=anything")
+    assert rv.status_code == 503
+    assert "Ollama" in rv.get_json()["error"]

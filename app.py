@@ -978,6 +978,51 @@ def templates_api():
     return jsonify(grouped)
 
 
+@app.route("/api/templates/search")
+def templates_search_api():
+    query = (request.args.get("q") or "").strip()
+    if not query:
+        return jsonify(error="q is required"), 400
+
+    try:
+        query_vector = embed_text(query)
+    except Exception:
+        return jsonify(error="本地 Ollama 未啟動或缺少 bge-m3 模型，"
+                             "請執行 ollama pull bge-m3 並確認 ollama serve 正在執行"), 503
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT id, source, title, prompt, thumbnail_path,
+                   platform, author, source_url, score, embedding
+            FROM templates
+            WHERE embedding IS NOT NULL
+        """).fetchall()
+
+    scored = []
+    for r in rows:
+        vector = json.loads(r["embedding"])
+        similarity = cosine_similarity(query_vector, vector)
+        scored.append((similarity, r))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+
+    results = []
+    for similarity, r in scored[:30]:
+        thumb_path = r["thumbnail_path"]
+        results.append({
+            "id": r["id"],
+            "title": r["title"],
+            "source": r["source"],
+            "prompt": r["prompt"],
+            "thumbnail_url": f"/{thumb_path}" if thumb_path else None,
+            "platform": r["platform"],
+            "author": r["author"],
+            "source_url": r["source_url"],
+            "similarity": similarity,
+        })
+    return jsonify(results)
+
+
 # ── Facebook Routes ──────────────────────────────────────────────────────────
 def _load_page_token(page_id=""):
     """Load page token. If page_id provided, returns that page's token.
