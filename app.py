@@ -174,6 +174,9 @@ def init_db():
                 community_prompt_id INTEGER
             )
         """)
+        existing_template_cols = {r[1] for r in conn.execute("PRAGMA table_info(templates)").fetchall()}
+        if "embedding" not in existing_template_cols:
+            conn.execute("ALTER TABLE templates ADD COLUMN embedding BLOB")
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 THUMB_MAX = 512   # max dimension for stored thumbnails

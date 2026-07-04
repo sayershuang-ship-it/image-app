@@ -344,7 +344,7 @@ def test_templates_table_created(client):
     assert cols == {
         "id", "source", "title", "category", "prompt", "thumbnail_prompt",
         "thumbnail_path", "platform", "author", "source_url", "score",
-        "community_prompt_id",
+        "community_prompt_id", "embedding",
     }
 
 
@@ -383,3 +383,9 @@ def test_templates_page_has_no_hardcoded_templates_object(client):
     body = rv.data.decode()
     assert "const TEMPLATES = {" not in body
     assert "/api/templates" in body
+
+
+def test_templates_table_has_embedding_column(client):
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(templates)").fetchall()}
+    assert "embedding" in cols
