@@ -476,3 +476,10 @@ def test_api_templates_search_returns_503_when_ollama_unreachable(client):
         rv = client.get("/api/templates/search?q=anything")
     assert rv.status_code == 503
     assert "Ollama" in rv.get_json()["error"]
+
+
+def test_templates_page_has_search_input(client):
+    rv = client.get("/templates")
+    body = rv.data.decode()
+    assert 'id="templateSearchInput"' in body
+    assert "/api/templates/search" in body

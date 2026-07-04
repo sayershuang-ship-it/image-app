@@ -244,6 +244,10 @@
       <div class="sidebar-header">
         <h2>Prompt Templates</h2><span class="badge">Templates</span>
       </div>
+      <div style="padding:10px 20px;border-bottom:1px solid var(--border)">
+        <input type="text" id="templateSearchInput" placeholder="語意搜尋模板…"
+               style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--fg);padding:8px 10px;font-size:13px;font-family:var(--font-body)" />
+      </div>
       <div class="template-list" id="templateList"></div>
     </aside>
 
@@ -374,6 +378,56 @@ function selectTemplateItem(idx, cat, el) {
   document.querySelectorAll('.tpl-item').forEach(x => x.classList.remove('selected'));
   if (el) el.classList.add('selected');
   const item = TEMPLATE_DATA[cat][idx];
+  document.getElementById('promptInput').value = item.prompt;
+}
+
+let searchDebounceTimer = null;
+
+document.getElementById('templateSearchInput').addEventListener('input', (e) => {
+  clearTimeout(searchDebounceTimer);
+  const query = e.target.value.trim();
+  if (!query) {
+    renderTemplateList();
+    return;
+  }
+  searchDebounceTimer = setTimeout(() => runTemplateSearch(query), 300);
+});
+
+async function runTemplateSearch(query) {
+  const list = document.getElementById('templateList');
+  list.innerHTML = '<div class="tpl-item" style="color:var(--muted)">Searching...</div>';
+  let results;
+  try {
+    const res = await fetch('/api/templates/search?q=' + encodeURIComponent(query));
+    const data = await res.json();
+    if (!res.ok) {
+      list.innerHTML = '<div class="tpl-item" style="color:oklch(55% 0.17 25)">' + escHtml(data.error || 'Search failed') + '</div>';
+      return;
+    }
+    results = data;
+  } catch (e) {
+    list.innerHTML = '<div class="tpl-item" style="color:oklch(55% 0.17 25)">Search failed: ' + escHtml(e.message) + '</div>';
+    return;
+  }
+  window.SEARCH_RESULTS = results;
+  const itemHtml = results.map((t, i) => {
+    const thumbTag = t.thumbnail_url
+      ? '<img src="' + escAttr(t.thumbnail_url) + '" style="width:88px;height:88px;object-fit:cover;border-radius:8px;margin-right:10px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
+      : '<div style="width:88px;height:88px;border-radius:8px;margin-right:10px;flex-shrink:0;background:var(--border)"></div>';
+    return '<div class="tpl-item" data-search-idx="' + i +
+           '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' +
+           thumbTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + escHtml(t.title) + '</span></div>';
+  }).join('');
+  list.innerHTML = itemHtml || '<div class="tpl-item" style="color:var(--muted)">No matches</div>';
+  list.querySelectorAll('.tpl-item[data-search-idx]').forEach(el => {
+    el.addEventListener('click', () => selectSearchResult(parseInt(el.dataset.searchIdx), el));
+  });
+}
+
+function selectSearchResult(idx, el) {
+  document.querySelectorAll('.tpl-item').forEach(x => x.classList.remove('selected'));
+  if (el) el.classList.add('selected');
+  const item = window.SEARCH_RESULTS[idx];
   document.getElementById('promptInput').value = item.prompt;
 }
 
