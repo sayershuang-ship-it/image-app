@@ -240,9 +240,8 @@
   <div class="workspace">
     <aside class="sidebar">
       <div class="sidebar-header">
-        <h2>Prompt Templates</h2><span class="badge">21 + 65 examples</span>
+        <h2>Prompt Templates</h2><span class="badge">Templates</span>
       </div>
-      <div class="tab-bar" id="tabBar"></div>
       <div class="template-list" id="templateList"></div>
     </aside>
 
@@ -295,172 +294,11 @@
 <script>
 /* escHtml / escAttr in static/app.js */
 
-const TEMPLATES = {
-  'Design & Info': {
-    'UI & Interface': [
-      { name: 'Standard', prompt: 'Generate a [platform: iOS/Android/Web] UI screenshot for a [product type].\nCore features: [Feature A], [Feature B], [Feature C].\nVisual style: [minimal/tech/skeuomorphic], primary color [color], accent [color].\nLayout: [top nav/dual-pane/card feed], clear hierarchy, generous whitespace.\nOutput: High-fidelity UI screenshot, readable text, [9:16/16:9] aspect ratio.' },
-      { name: 'JSON Advanced (for Agent)', prompt: '{\n  "type": "UI Screenshot",\n  "platform": "iOS",\n  "product": "Fitness App",\n  "layout": "Card-based feed with bottom tab bar",\n  "style": {\n    "theme": "Dark Mode",\n    "primary_color": "Neon Green",\n    "typography": "Clean sans-serif"\n  },\n  "content": {\n    "header": "Today\'s Activity",\n    "cards": [\n      {"title": "Running", "data": "5.2 km", "button": "Start"},\n      {"title": "Calories", "data": "340 kcal"}\n    ]\n  },\n  "constraints": "High fidelity, readable text, 9:16 aspect ratio"\n}' },
-      { name: 'Social Screenshot', prompt: 'Generate a [platform: X/Douyin/Instagram/WeChat] content screenshot, [dark/light] mode.\nAspect ratio: [9:16 / 3:4 / 1:1], phone screenshot style.\n\nCore content:\n- Account info: [avatar description / username / verification badge]\n- Post text: [specific text content]\n- Engagement: [likes/comments/shares counts]\n\nUI elements:\n- Top: [status bar/nav bar/search bar]\n- Bottom: [action bar/tab bar/input field]\n\nConstraints: Text must be accurately rendered, no gibberish, fixed aspect ratio.' },
-      { name: 'Live Stream UI', prompt: 'Generate a [platform: Douyin/TikTok/Bilibili] live stream screenshot.\nHost: [person description/name], pose: [sitting/standing/action], outfit: [description].\nBackground: [room description], lighting: [warm/cool/mixed].\n\nUI overlay:\n- Top: host avatar + follow button + viewer count\n- Bottom-left: comment/danmaku list\n- Bottom-right: product card / gift effects / PK bar\n- Bottom: input box + action icons\n\nStyle: [realistic/high-fidelity UI/dark/pink], 9:16 aspect ratio.' }
-    ],
-    'Charts & Infographics': [
-      { name: 'Standard', prompt: 'Generate an infographic for [specific topic], target audience: [demographic].\nStructure: title area + [3-5] modules (each with icon, short title, 1-2 line description).\nChart type: [flowchart/comparison/relationship/timeline].\nStyle: [professional report/scientific illustration/educational], primary color [color], background [light/dark].' },
-      { name: 'JSON Advanced (for Agent)', prompt: '{\n  "type": "Infographic",\n  "topic": "Urban Metabolism",\n  "audience": "General Public",\n  "structure": {\n    "title_area": "City Systems Map",\n    "layout": "Isometric cutaway, 12 numbered panels",\n    "modules": [\n      {"title": "Energy", "icon": "lightning", "text": "Power flows"},\n      {"title": "Water", "icon": "water_drop", "text": "Water flows"}\n    ]\n  },\n  "style": {\n    "aesthetic": "Scientific atlas",\n    "colors": "Low saturation, color-coded flows",\n    "background": "Light paper texture"\n  },\n  "constraints": "No cyberpunk, no gibberish text, strict structural layout"\n}' },
-      { name: 'Scale Zoom Infographic', prompt: 'Generate a scientific scale-zoom infographic for [topic].\nStructure: 6-8 circular or hexagonal frames arranged from micro to macro scale.\nEach frame: scale name, 3-5 word insight, measurement unit or magnification, high-detail 3D render.\nConnect frames with thin lines. Title: "[Topic]: AT EVERY SCALE".\nStyle: scientific editorial, precise macro lighting, clear hierarchy, short readable text.' }
-    ],
-    'Posters & Typography': [
-      { name: 'Standard', prompt: 'Design a poster for [event/product/film], theme: [theme].\nMain visual: [subject element], headline: [title], subtitle: [subtitle].\nLayout: [centered/left-aligned/diagonal], style: [retro/futuristic/minimal].\nColors: [primary + accent], mood: [emotional keywords].\nOutput: High-resolution poster suitable for social media.' },
-      { name: 'Sports Campaign', prompt: 'Design a commercial campaign poster for [sport/fitness category].\nSubject: [athlete/model/product prop], pose: [dynamic action].\nKey prop: [racket/dumbbell/sneakers/jersey], exaggerated scale as visual anchor.\nLayout: [single hero image/triptych/data graffiti].\nHeadline: "[Main title]", copy: "[short phrase/data/spirit slogan]".\nStyle: premium sports brand ad, strong lighting, reflective floor, clean composition, branded colors.' },
-      { name: 'Conceptual Typography Poster', prompt: 'Create ONE finished premium conceptual typography poster for the exact title:\n\n"[Title / word / short phrase]"\n\nSingle poster only. No moodboard, grid, presentation board, mockup, captions, or process sheets.\n\nThe title must be the dominant visual structure: huge, readable, powerful, spelled exactly.\n\nTypography is the hero. Design custom-looking letterforms whose weight, width, contrast, spacing, rhythm, and texture express the temperament of the title.\n\nUse a restrained 4-6 color system matched to the theme. Composition style: high-end editorial poster, museum-quality graphic design, dramatic scale, strong hierarchy, bold flat color areas.\n\nAvoid generic word art, glossy 3D lettering, random icons, stock-photo realism, cluttered collage.' },
-      { name: 'Multi-Style Signature Poster', prompt: 'You are a premium signature design system.\n\nInput: Name: [Name / Nickname]\n\nTask: Generate a 9:16 vertical "Multi-Style Signature Selection" poster translating the name into 6 signature styles with distinct energy.\n\nLayout:\n- Clean white or light gray gradient background, 40%+ whitespace\n- Top title: [Name] · Signature Style Selection\n- Middle: 2 columns × 3 rows card grid\n- Bottom: subtle "Choose one as your signature" text\n\n6 styles:\n1. Minimal rational: brand-like, restrained strokes\n2. Bold dynamic: strong connections, speed, extended tails\n3. Relaxed natural: hand-written feel, organic flow\n4. Eastern cursive: ink texture, rhythmic起伏\n5. Sharp structural: geometric cuts, cool restraint\n6. Experimental: partially unreadable, avant-garde\n\nEach card: number, style name, large signature, short descriptor, subtle accent color.' }
-    ],
-  },
-  'Commerce & Space': {
-    'E-Commerce': [
-      { name: 'Standard', prompt: 'Generate an e-commerce hero image for [product name], selling points: [point 1], [point 2].\nScene: [studio lighting/lifestyle setting], shot: [close-up/half-body/full].\nMaterial details: [keywords], lighting: [soft/side/rim light].\nAdditional: [price badge/selling-point icons/promo text].' },
-      { name: 'Personalized Beauty Report', prompt: 'You are a beauty consultant + facial analysis + brand visual design system.\nGoal: Generate a vertical lipstick recommendation report based on [user selfie] and [brand].\n\nInput: User image, Brand [Dior/YSL/Armani/Chanel/TF/other], Style preference [office/soft/powerful/mood/whitening], Count [3-5].\n\nAnalysis: skin tone (cool/warm/neutral + lightness), temperament, lip base.\nRecommendations: [3-5] differentiated shades with name, color tag, on-face effect, scenario.\n\nLayout: top-left user input + analysis, top-right conclusion, middle lip-color matrix, bottom personal advice.\nStyle: premium beauty editorial, structured info visualization, accurate lip colors, 9:16, 8K.' },
-      { name: 'JSON Advanced (for Agent)', prompt: '{\n  "type": "E-commerce Hero Image",\n  "product": {\n    "name": "Noise Cancelling Headphones",\n    "material": "Matte black finish with metallic accents",\n    "angle": "3/4 profile, floating slightly"\n  },\n  "setting": {\n    "background": "Minimalist studio setup, soft gray gradient",\n    "lighting": "Softbox overhead, sharp rim light on edges"\n  },\n  "copywriting": {\n    "badges": ["NEW", "$299"],\n    "slogan": "Silence the World"\n  },\n  "constraints": "Commercial photography quality, hyper-realistic textures"\n}' }
-    ],
-    'Brand & Identity': [
-      { name: 'Standard', prompt: 'Design a brand visual identity for [brand name].\nKeywords: [kw1], [kw2], [kw3].\nIncludes: Logo direction [geometric/wordmark/graphic], supporting graphics, color palette, application mockups.\nStyle: [modern/premium/approachable], industry: [industry], audience: [audience].' },
-      { name: 'Complete Brand Identity Pack', prompt: 'You are a top agency creative director. Deliver a complete brand identity system for [business/product].\n\nInput: Business name, description, industry, target audience, competitors [3-5], personality [5 keywords], desired feeling, visual references [3 likes, 3 dislikes].\n\nOutput:\n1. Brand strategy: archetype, core promise, positioning, differentiation\n2. Logo concepts: 3-5 distinct directions with rationale\n3. Color system: primary, secondary, accent, neutrals, HEX codes, psychology\n4. Typography: heading, body, accent fonts with hierarchy\n5. Touchpoints: business card, app icon, website, social templates\n6. Brand rules: 3 unbreakable rules' },
-      { name: 'Brand Touchpoint System Board', prompt: 'Generate a premium brand touchpoint system board for [brand name].\n\nBrand positioning: [industry/lifestyle/product category]\nCore qualities: [kw1], [kw2], [kw3]\n\nTouchpoints must include: hero product shot, packaging/bag/cup/label/sticker, menu card/price list, lifestyle scene, unified application of color/type/graphic language.\n\nDesign language: [modern minimalist/Japanese whitespace/luxury editorial/tech brand], primary [color], accent [color], generous whitespace, fine materials, real shadows.' },
-      { name: 'Brand Personality Comic Infographic', prompt: 'Based on uploaded [Logo/Brand Visual], generate a 4:5 vertical comic infographic: "What This Brand Feels Like".\n\nMain visual: a personified brand character whose clothing, expression, and posture embody [brand qualities].\nSurrounding structure: 6-8 comic panels with short title, action, speech bubble.\nModules: Voice tone, Energy level, Social behavior, Communication style, DO/DON\'T.\nStyle: comic + editorial infographic, expressive but refined, short punchy text.' }
-    ],
-    'Architecture & Space': [
-      { name: 'Standard', prompt: 'Generate an architectural visualization for a [space type], function: [purpose].\nStyle: [modern minimalist/industrial/new Chinese], materials: [wood/stone/metal/glass].\nSpace: [open/partitioned], circulation: [description].\nLighting: [natural/artificial], time: [day/night].\nOutput: Photorealistic architectural render.' },
-      { name: 'JSON Advanced (for Agent)', prompt: '{\n  "type": "Architectural Visualization",\n  "space": {\n    "type": "Modern Cabin Interior",\n    "function": "Living room",\n    "materials": "Exposed concrete, large floor-to-ceiling glass, warm timber accents"\n  },\n  "environment": "Nestled in a dense, snowy pine forest visible through the glass",\n  "camera": {\n    "angle": "Eye-level perspective, wide-angle lens",\n    "lighting": "Golden hour, warm interior lights glowing, cool blue ambient light outside"\n  },\n  "render_quality": "Unreal Engine 5 style, hyper-realistic, 8k resolution, ray tracing"\n}' }
-    ],
-  },
-  'Image & Character': {
-    'Photography': [
-      { name: 'Standard', prompt: 'Subject: [person/object/street scene], location: [place].\nCamera style: [35mm/85mm], [shallow/deep DOF], [documentary/cinematic].\nLighting: [natural/neon night/backlight], mood: [keyword].\nDetails: [skin texture/material/grain].\nOutput: Hyper-realistic photography style image.' },
-      { name: 'JSON Advanced (for Agent)', prompt: '{\n  "type": "Hyper-realistic Photography",\n  "subject": {\n    "description": "A weary 30-year-old barista wiping a coffee cup",\n    "details": "Subtle sweat on forehead, detailed skin pores, wearing a denim apron"\n  },\n  "setting": "Dimly lit vintage cafe, rain visible through the window behind",\n  "camera_specs": {\n    "gear": "Shot on Sony A7R IV, 50mm lens",\n    "aperture": "f/1.4 (shallow depth of field)",\n    "lighting": "Cinematic lighting, neon sign reflecting on wet window"\n  },\n  "film_aesthetic": "Kodak Portra 400 emulation, subtle film grain"\n}' },
-      { name: 'Street Moment Photography', prompt: 'Generate a vertical phone photo of [unexpected event / daily moment] at [street / outdoor location].\nSubject: [object / person action / scene trace], with realistic material state.\nEnvironment: [ground material / wall / street elements], natural clutter.\nLighting: [noon harsh / overcast diffuse / night streetlamp], realistic shadows.\nCamera: handheld phone perspective, slight俯拍 or low angle, natural composition.\nTexture: raw unedited photo look, natural color, high detail.\nNegative: no illustration, anime, CGI, studio light, overly clean, fake liquid, floating objects, watermarks.' }
-    ],
-    'Illustration & Art': [
-      { name: 'Standard', prompt: 'Create an illustration of [subject], protagonist: [character/subject].\nArt style: [anime/watercolor/flat/impasto], lines: [fine/bold].\nColors: [color scheme], background: [simple/complex scene].\nComposition: [close-up/mid-shot/wide], focus on [detail].\nOutput: High-quality illustration suitable for covers or social media.' },
-      { name: 'JSON Advanced (for Agent)', prompt: '{\n  "type": "Artistic Illustration",\n  "art_style": "Studio Ghibli inspired anime style",\n  "scene": {\n    "description": "A giant flying whale carrying a small cozy village on its back",\n    "details": "Windmills turning, tiny people looking over the edge, fluffy white clouds"\n  },\n  "palette": "Vibrant sky blue, lush greens, soft pastel accents",\n  "technique": "Cel shading, detailed background art, soft glowing magical aura",\n  "mood": "Whimsical, adventurous, nostalgic"\n}' }
-    ],
-    'Character Design': [
-      { name: 'Standard', prompt: 'Design a character concept for [role/identity].\nAppearance: [age/hairstyle/outfit/accessories], personality: [keywords].\nPose: [standing/dynamic action], expression: [emotion].\nWorld: [era/faction/profession], iconic element: [element].\nOutput: Character main view + style-consistent design sheet.' },
-      { name: 'Action Decomposition Sheet', prompt: 'Generate an action decomposition reference sheet for [character].\nStyle: [black & white line art / 3D grayscale / comic storyboard / tutorial], clean background.\nLayout: 4×4 grid, 16 equal panels, numbered 1-16.\nCharacter consistency: same character across all panels.\nEach panel: action title, full body pose, 3-4 line description, direction/rotation arrows.\nAction sequence: [complete steps from base stance to final action].' },
-      { name: 'Photo to Designer Toy', prompt: 'Convert the input photo into a premium 3D collectible toy figure.\nIdentity: preserve original character face, hairstyle, expression, and clothing recognition.\nProportions: big head design, slightly exaggerated features, toy-like body proportions.\nMaterials: matte vinyl / resin / collectible figure finish.\nLighting: soft studio light, clean background, centered subject.\nQuality: ultra-sharp, realistic material reflections, 8K render, premium designer toy aesthetic.' }
-    ],
-  },
-  'Narrative & More': {
-    'Scenes & Narrative': [
-      { name: 'Standard', prompt: 'Generate a scene for [story theme], set in [time + location].\nMain event: [event description], protagonist: [character], conflict: [conflict].\nCamera: [wide establishing shot / mid narrative / close-up].\nAtmosphere: [tense/warm/suspenseful], color: [cool/warm/high contrast].\nOutput: Narrative concept art with dramatic tension.' },
-      { name: 'JSON Advanced (for Agent)', prompt: '{\n  "type": "Narrative Scene",\n  "story_context": "The exact moment an ancient seal breaks",\n  "environment": "Crumbling stone temple overgrown with glowing blue vines",\n  "action": "A young explorer dropping their torch as a massive beam of light shoots into the sky",\n  "atmosphere": {\n    "mood": "Awe-inspiring, terrifying",\n    "lighting": "Blinding central light casting long dramatic shadows"\n  },\n  "camera": "Low angle shot, emphasizing the scale of the light beam"\n}' }
-    ],
-    'Historical & Ancient': [
-      { name: 'Standard', prompt: 'Generate a [dynasty/ancient setting] themed image, topic: [topic].\nCharacters: [identity/clothing/artifacts], setting: [palace/market/landscape].\nArt style: [gongbi/xieyi/cinematic realism], colors: [palette].\nCultural details: [patterns/rituals/architectural elements].' },
-      { name: 'JSON Advanced (for Agent)', prompt: '{\n  "type": "Historical/Oriental Scene",\n  "setting": "Tang Dynasty Capital City at Night",\n  "subject": {\n    "identity": "Noblewoman",\n    "clothing": "Traditional Ruqun (襦裙) with elaborate floral embroidery",\n    "action": "Holding a glowing silk lantern, looking at fireworks"\n  },\n  "style": "Cinematic realism combined with subtle traditional ink wash textures",\n  "details": "Accurate Tang architecture, bustling crowd in background",\n  "constraints": "No modern elements, historically accurate clothing structure"\n}' }
-    ],
-    'Documents & Publications': [
-      { name: 'Standard', prompt: 'Create a [document type: menu/magazine spread/newspaper layout].\nGrid: [columns/margins/heading hierarchy].\nContent modules: [cover area/body area/chart area/footnotes].\nTypography: [serif/sans-serif], colors: [color scheme].\nOutput: Publication visual draft with clear readability and layout.' },
-      { name: 'JSON Advanced (for Agent)', prompt: '{\n  "type": "Editorial Layout",\n  "document": "Fashion Magazine Double-page Spread",\n  "grid": "3-column grid, wide margins",\n  "content": {\n    "left_page": "Full-bleed high-fashion photograph of a model in a red dress",\n    "right_page": {\n      "headline": "THE RED RENAISSANCE",\n      "body_text": "(Simulated text blocks)",\n      "pull_quote": "\\"Color is power.\\""\n    }\n  },\n  "typography": "Elegant serif for headlines, clean sans-serif for body",\n  "palette": "Monochrome with stark red accents"\n}' }
-    ],
-    'Other Applications': [
-      { name: 'Standard', prompt: 'Task: [content type to generate].\nInput: subject [subject], scene [scene], style [style], colors [palette].\nQuality: resolution [HD/4K], aspect ratio [ratio], composition [approach].\nOutput: used for [purpose], highlight [key info].\nProvide: main version + alternative version.' },
-      { name: 'Concept Product R&D Board', prompt: 'Generate a complete concept product R&D breakdown board for [product/furniture/installation].\n\nCore concept: translate [inspiration source: crumpled paper/shell/origami/mechanism] into [product type].\nDesign philosophy: [one-line function + emotion statement].\n\nLayout:\n- Center: high-quality hero render of final product\n- Left: observation & form analysis (inspiration image, silhouette extraction, structure lines)\n- Middle: form iteration process (3-5 evolution steps)\n- Bottom: ergonomic/usage scenario validation (dimensions, angles, postures)\n- Right: structural integration & material plan (layered breakdown)\n- Base: final materials, surface textures, color options, key specs\n\nStyle: industrial design proposal board, clean white/light gray background, technical drawing + product photography hybrid.' },
-      { name: 'JSON Advanced (for Agent)', prompt: '{\n  "type": "Custom Generation",\n  "objective": "Generate [Specific content]",\n  "inputs": {\n    "subject": "[Main subject details]",\n    "scene": "[Background and context]",\n    "style": "[Artistic/Visual style]",\n    "palette": "[Color scheme]"\n  },\n  "quality_constraints": {\n    "resolution": "8k, hyper-detailed",\n    "aspect_ratio": "[e.g., 16:9]",\n    "composition": "[e.g., Rule of thirds]"\n  },\n  "output_requirements": {\n    "usage": "[Intended use case]",\n    "focus": "[Key element to highlight]"\n  }\n}' }
-    ],
-  },
-  'Gallery Examples': {
-    'Social & Live Stream': [
-      { name: 'X Post Screenshot', prompt: '画一张 X 的内容截图，深色模式，@OpenAI 蓝勾认证账号发推。正文中文内容：[tweet text]。底部添加一张深色官方宣传风格海报，简洁黑客质感。互动数据：评论 8.9K、转发 42K、点赞 298K（亮起）、收藏 34K（亮起）、浏览 32.4M。图片比例为 3:4。' },
-      { name: 'Live Stream with Host', prompt: 'A 9:16 aspect ratio image, generating a screenshot of a Douyin livestream where [celebrity name] is broadcasting, holding a sign that says "[message]". UI includes viewer count, like count, chat messages, gift notifications, and product card overlay.' },
-      { name: 'Historical Figure X Post', prompt: '创建一个[朝代][历史人物]登基之后的 X 帖子页面，深色模式，蓝勾认证。正文用现代口语表达该人物的心情，配 3 张相关图片，互动数据合理。' },
-      { name: 'WeChat Moments Screenshot', prompt: 'Generate a WeChat Moments screenshot. [Historical figure] posts [content], with likes and comments from other relevant historical figures. Dark/light mode. Realistic phone screenshot style, 9:16.' },
-      { name: 'Douyin Product Live', prompt: '抖音直播截图：[人物]在卖[商品]，手里举着新品，背景科技感。左下角弹幕飘着用户评论。包含在线人数、点赞数、商品卡片、礼物特效。比例 9:16。' },
-    ],
-    'Infographics & Knowledge Maps': [
-      { name: 'Science Encyclopedia Poster', prompt: '根据【主题】生成一张高质量竖版「科普百科图」。兼具图鉴感、百科感、信息结构感和收藏感的模块化科普信息图。风格参考高级博物图鉴、现代百科书页。包含：清晰好看的主题主视觉，若干局部特征放大细节，多个圆角模块化信息分区，清楚的标题层级与重点标签。浅色干净背景，柔和配色，轻阴影，精致小图标。竖版。' },
-      { name: 'Urban Metabolism Atlas', prompt: 'Vertical 9:16 isometric cutaway infographic "[City Name] 城市生命系统图谱 / Urban Metabolism Atlas". Smart city from sky to bedrock: skyscrapers, streets, subway, utility tunnels, water/sewage/gas/heating pipes, fiber, data center, flood tanks, aquifers, geothermal wells, bedrock. Color-coded flows for power/water/data/traffic/waste. 12 numbered panels bilingual CN/EN. Style: engineering white paper + scientific atlas, light paper bg, crisp lines, 8K.' },
-      { name: 'Causal Chain Infographic', prompt: 'JSON: type "comprehensive infographic". Title "[Topic]诞生的因果链 / THE CAUSAL CHAIN OF [TOPIC]". Center: transparent anatomical/technical model. 12-14 sections tracing the complete causal chain from source to final outcome. Style: highly detailed 3D illustration, clean structured layout, bilingual CN/EN. 3:4 vertical.' },
-      { name: 'Hand-drawn Food Map', prompt: '一张手绘风格的城市美食地图，以[城市]为主题。鸟瞰视角的手绘简化城市地图为底，标注区域和水系地标。12个美食地点的精致手绘小插画，每个约占地图面积5%面积，旁边手写体标注店名和推荐语。边缘用手绘藤蔓和当地植物装饰形成边框。右下角手绘指南针和图例。水彩+彩铅混合手绘质感。1:1。' },
-      { name: 'Fashion Week Lookbook', prompt: 'JSON: type "7-day fashion lookbook infographic". 7 columns (Mon-Sun) with main portrait, 4 detail thumbnails, outfit specs, keywords, color swatches, star ratings, fabric/price, season icons per day. Elegant editorial style.' },
-      { name: 'Emotional Wellness Grid', prompt: 'JSON: type "infographic poster", style "cute flat vector illustration, cozy, warm, soft shading, pastel Morandi colors". Header "[情绪主题]", 9 grid panels each with an actionable tip, icon illustration, and short description. Footer with encouragement message.' },
-    ],
-    'Posters & Visual Design': [
-      { name: 'Epic Narrative Poster', prompt: '根据【主题】自动生成一张收藏版史诗叙事海报：巨大优雅的人物侧脸剪影作为外轮廓，剪影内部自动生长出最契合该主题的完整世界观。双重曝光式联想，偏电影海报与梦幻水彩插画融合风格。柔和空气透视，轻雾化过渡，纸张颗粒，边缘飞白与刷痕，大面积留白，版式克制高级。竖版。' },
-      { name: 'City Series Poster', prompt: '2026中国城市系列宣传海报，主题为【城市名】。现代、多彩、明亮通透的国潮风，竖版9:16。大面积白色纹理留白背景，一条盘旋的红色丝绸形成S型主构图。融合该城市3-5个地标建筑与文化元素。左侧排版年份和城市名。细节丰富，高端图形设计。' },
-      { name: 'Football Movie Poster', prompt: '生成一张「足球主题电影海报」风格的高清写真海报：[球员名]站在球场中央激情庆祝，神情热血、坚定、自信，现场灯光璀璨，看台座无虚席，背景有彩色烟雾、聚光灯、飘扬的旗帜和飞舞的纸屑，营造决赛之夜般的史诗氛围。海报级构图，电影感光影，高对比度，8K，专业体育摄影。' },
-      { name: 'Cinematic Promo Poster (JP)', prompt: 'JSON: type "cinematic promotional poster", style "3D CGI animation, highly detailed, dramatic lighting, caricature characters". Multi-character, multi-panel layout. Japanese text overlays. 4:5 or 9:16 vertical.' },
-      { name: 'Presentation Cover Slide', prompt: '创建高级的 4:3 演示文稿封面幻灯片，介绍 [Topic Name]。极简现代设计，大胆排版，几何元素，品牌感配色。高质量商业演示风格。' },
-      { name: '80s Propaganda Poster', prompt: '生成八十年代宣传画风格海报，标语"[slogan]"，人物包含 [character names]，经典红色主题，工农兵风格，粗颗粒印刷质感。' },
-    ],
-    'E-Commerce & Products': [
-      { name: 'Amazon A+ Detail Page', prompt: '生成一套亚马逊 A+ 详情图，产品为 [product name]。包含：主图+卖点模块、产品参数对比表、使用场景 lifestyle 图、细节特写模块、品牌故事模块。专业电商设计，干净背景，商业摄影质感。' },
-      { name: 'E-Commerce Hero Image', prompt: 'JSON: type "E-commerce Hero Image". Product: [name, material, angle]. Setting: minimalist studio, soft lighting. Copywriting: badges, slogan. Constraints: commercial photography quality, hyper-realistic textures.' },
-      { name: 'Summer Dress Detail Page', prompt: '夏季女裙电商详情图。产品：[连衣裙描述]。包含：多角度展示、面料细节特写、尺码表、场景穿搭、卖点icon标注。柔和自然光，时尚电商风格，适合小红书/天猫。' },
-      { name: 'Product Ad Redesign', prompt: '以专业设计师的视角重新设计这个商品广告。提升视觉层次、排版质量和信息传达效率。保持原产品图，优化背景、配色、字体层级和 CTA 按钮。' },
-      { name: 'Beverage Ad Photo', prompt: '商品广告照片，[饮料类型]，名称="[产品名]"。夏日清凉感，冰块水珠质感，鲜艳水果搭配，强光影对比，高 CTA 设计。3:4 竖版。' },
-    ],
-    'Photography & Portraits': [
-      { name: '35mm Film Portrait', prompt: 'A vintage 35mm film photograph of [subject description]. Soft makeup, looking directly at camera. Harsh direct camera flash, candid amateur snapshot aesthetic. Background: dimly lit room. Heavy film grain, slightly muted colors, nostalgic highly realistic photographic texture.' },
-      { name: 'CCD Camera Aesthetic', prompt: '手机照片，老式CCD相机美学，刺眼闪光灯，昏暗室内。[人物描述]，直视镜头。高对比度，皮肤纹理真实，轻微红眼，Y2K 千禧年质感。9:16。' },
-      { name: 'Kimono Autumn Portrait', prompt: 'A photorealistic portrait with shallow depth of field and soft bokeh of a young Japanese woman looking back over her shoulder with a gentle smile. Wearing a light beige kimono with orange maple leaf patterns and gold obi. Background: autumn garden with vibrant red maple leaves. Cinematic atmosphere.' },
-      { name: 'B&W Fashion Editorial', prompt: 'A striking black and white close-up portrait of [subject]. Wet skin, highly detailed water droplets. Intense gaze off-camera. Dramatic high-contrast lighting emphasizing facial structure against pitch-black background. Photorealistic high-fashion editorial style with cinematic chiaroscuro.' },
-      { name: 'Gym Selfie Portrait', prompt: 'A photorealistic selfie of [subject] on an indoor basketball court. Black athletic t-shirt, holding a basketball. Background: hardwood floor, wall pads, basketball hoop. Bright indoor gym lighting with a casual social media aesthetic.' },
-      { name: 'Hanfu Fashion Portrait', prompt: '模特身穿精致[颜色]齐胸襦裙，8K超高分辨率。传统与时尚融合，柔和自然光，85mm黄金人像镜头，浅景深，电影感色彩分级。背景为古典园林或现代极简空间。' },
-    ],
-    'Illustration & Character Design': [
-      { name: 'Anime Fantasy Illustration', prompt: '为参考图的[角色]绘制一副日系唯美奇幻风格插画。宏大的中景构图，画面中心是完全保留了完整细节的角色。天空高饱和度粉紫与深蓝交织，耀眼的蓝色巨型流星划破天际。水面完美对称反射整个星空和角色倒影。高饱和度冷暖色调交织，电影感光影渲染，9:16，4K。' },
-      { name: '3x3 Expression Grid', prompt: 'JSON: type "3x3 character expression grid", style "3D animation, Pixar style". Character: [description]. 9 panels with different expressions and outfits. Clean white background, consistent identity across all panels.' },
-      { name: 'Pixel Art RPG Items', prompt: '创建一个包含100种不同奇幻RPG物品的10×10网格。经典16/32位像素艺术，SNES/GBA时代JRPG风格。物品类型涵盖：武器、防具、药水、魔法书、饰品、消耗品、任务道具。每格标注物品名称。' },
-      { name: 'Dragon Sketch on Exam Paper', prompt: '巨大巨龙用密集混乱涂鸦线条绘制在试卷页面上。试卷有真实的高中数学题目和红色批改笔迹，巨龙从试卷一角盘旋而出，突破纸面边界。黑白为主，红色批注点缀。杰作级别，极其详细。' },
-      { name: 'Mecha Girl Cinematic', prompt: '十几岁机甲少女，双马尾，JK制服与机械外骨骼融合。废弃海城背景，雨后反光地面，巨大机甲残骸。变形宽银幕35mm镜头，电影级光影，绘画感，高细节机械设计。16:9。' },
-      { name: 'Photo to Designer Toy', prompt: '将输入照片转换为高端 3D 收藏玩具形象。大头设计，五官轻微夸张，身体比例玩具化。材质：哑光 vinyl / resin / collectible figure finish。柔和棚拍光，干净背景，8K render，premium designer toy aesthetic。' },
-    ],
-    'Architecture & Spaces': [
-      { name: 'Dark Gothic Hall', prompt: 'A highly detailed, cinematic wide shot of a grand, dark gothic hall with a dark fantasy aesthetic. Center: single figure in long white robe kneeling on reflective stone floor facing ornate golden altar with lit candles. Massive dark stone pillars with glowing blue ethereal cracks. Dramatic moody lighting. 16:9 format.' },
-      { name: 'Architectural Visualization', prompt: 'JSON: type "Architectural Visualization". Space: [type, function, materials]. Environment: [surroundings]. Camera: eye-level perspective, wide-angle lens. Lighting: golden hour, warm interior lights, cool ambient light outside. Render quality: Unreal Engine 5 style, hyper-realistic, 8K, ray tracing.' },
-      { name: 'Building Exploded Diagram', prompt: '生成[建筑名]的建筑拆解图，有详细说明，中式美学。包含：整体外观、分层结构解析、材料标注、尺寸比例、关键构件特写。干净白底，技术图纸+建筑摄影混合风格，细线标注，清晰标题。' },
-      { name: 'Arcade Machine Repair Scene', prompt: 'A vintage late 90s amateur flash photograph of a young man repairing an arcade machine. Kneeling on dark patterned arcade carpet, looking back at camera. Front panel of cabinet open exposing complex internal electronics. Dimly lit arcade interior with other glowing cabinets. Harsh direct flash, grainy film, Y2K aesthetic.' },
-      { name: 'City Fantasy Poster', prompt: '东方幻想风格高端城市海报设计，竖版 9:16 构图。背景深黑渐变为暗红，金色能量线蜿蜒。城市地标建筑浮现。东方白发女性角色。文字层级清晰。8K 分辨率，商业级海报，电影感光影。' },
-    ],
-    'Historical & Cultural': [
-      { name: 'Gongbi Traditional Painting', prompt: '工笔画，[朝代] [人物描述]。细节丰富，传统工笔技法，细腻线条勾勒，淡雅设色。包含[场景/道具]。印章"[签名]"。3:4。' },
-      { name: 'Chinese Ink Wash Portrait', prompt: '混合媒体摄影，超写实肖像融合中国水墨插画。人物保持摄影真实感，周围/服饰融入水墨笔触、飞白、晕染效果。8K，电影级光影。3:4。' },
-      { name: 'Ming Dynasty Emperor Avatars', prompt: '基于上传图风格，生成明朝各个皇帝的头像，头像下方列出谥号和姓名。传统中国帝王肖像画风格，统一尺寸和背景。' },
-      { name: 'New Chinese Ink Landscape', prompt: '新中式水墨山水海报。春日禅意，大面积留白。抽象几何化山体轮廓，水墨渐变层次，极简配色（黑白灰+单一强调色）。8K超清，9:16。' },
-      { name: 'Calligraphy Artwork', prompt: '结合[书法家]《[作品名]》内容，生成书法帖图片。传统宣纸纹理，墨色浓淡变化，印章点缀。保留原帖的笔势、结构和气韵。' },
-      { name: 'Thousand-Hand Guanyin Gongbi', prompt: '千手观音菩萨工笔画。手持现代物品（笔记本电脑、咖啡杯等），传统工笔技法和现代元素碰撞。高度详细，金线勾勒，3:4。' },
-    ],
-    'Brand & Identity': [
-      { name: 'Logo System Design', prompt: '用 [A/B/C/D] 风格为"[品牌名]"设计 VI 系统。包含：Logo 主方案+变体、配色系统（主色+辅色+强调色+HEX）、字体搭配、名片/信纸/包装应用 mockup。统一风格，专业品牌设计。' },
-      { name: 'Seal Carving Design', prompt: '给"[人名/品牌]"设计一组篆刻印章。包含：白文印、朱文印、闲章各一方。传统篆刻风格，印石纹理，印泥质感。不同形状（方形/圆形/异形）。' },
-      { name: 'Brand Collab Materials', prompt: '设计一套 [品牌A] 和 [品牌B] 联名的宣传物料。包含：联名 Logo、海报、产品包装、社媒宣传图。两个品牌的视觉元素有机融合，高级感联名设计。' },
-      { name: 'Postcard Design', prompt: '设计一张[城市/主题]的明信片。黑色线稿风格或水彩风格，包含地标建筑和代表性元素。正面为主视觉，背面为邮寄格式。高级文创质感。' },
-    ],
-    'Typography & Calligraphy': [
-      { name: 'Creative Typography Art', prompt: '创意艺术字体"[文字内容]"，[秀丽笔/毛笔/钢笔]手写风格。强烈视觉冲击力。字体的粗细、连笔、飞白、墨迹纹理表现该词语的气质与力量感。纯色或极简背景，横版。' },
-      { name: 'Conceptual Typography Poster', prompt: 'Create ONE finished premium conceptual typography poster for the exact title: "[Title]". Single poster only. The title must be the dominant visual structure: huge, readable, powerful, spelled exactly. Custom-looking letterforms. Restrained 4-6 color system. High-end editorial poster, museum-quality graphic design, dramatic scale, strong hierarchy.' },
-      { name: 'Multi-Style Signature Poster', prompt: '基于姓名自动生成一张 9:16 竖版「多风格签名选择海报」。把姓名转译成 6 种具有笔势、气质和力量感的签名方案。纯白或极浅灰渐变背景，2列×3行卡片网格。每张卡片包含：编号、风格名称、大尺寸签名、短气质说明。6种风格：极简理性、狂放张力、松弛随性、东方行草、锋利结构、实验风格。' },
-    ],
-    'UI & Game Visuals': [
-      { name: 'Genshin-Style UI Mockup', prompt: 'JSON: type "mobile social media app UI mockup". Platform: [App name, dark/light mode]. Post by "[username]" (verified). Content: [post text with hashtags]. Media grid: [N] images. Timestamp, engagement stats, navigation bar. Realistic app screenshot style.' },
-      { name: 'Game Key Visual', prompt: '生成以[经典名著]为主题的古代 ARPG MMO 开放世界游戏截图/主视觉。包含：游戏Logo、主角形象、场景展示、UI界面元素。高质量游戏宣传图风格，电影感。' },
-      { name: 'Car Center Console UI', prompt: '生成 [汽车品牌型号] 的中控界面，暗色系。包含：仪表盘、导航地图、音乐播放器、空调控制、车辆设置图标。高保真车载 UI 截图，21:9 超宽比例，真实光照反射。' },
-      { name: 'Exploded Product Diagram', prompt: 'JSON: type "exploded view product diagram poster", subject "[tech product]", style "clean high-tech 3D render, studio lighting, glowing accents". Vertically stacked exploded view showing 8-10 layers. Callout labels on both sides. Professional tech poster quality.' },
-      { name: 'Icon Font Set', prompt: '生成一套[运动/美食/科技/旅行]类 app 的 iconfont。包含 20-30 个统一风格的图标，线框/填充/彩色风格。网格排列，每个图标下方标注名称。适合移动端 UI 使用。' },
-    ],
-    'Creative Mashups': [
-      { name: 'Historical Figure Selfie', prompt: '[历史人物]自拍登记发微博/朋友圈。现代手机自拍视角，历史人物穿着古装但使用现代场景/道具。幽默反差，写实照片风格，手机 UI 叠加层。' },
-      { name: 'Mona Lisa Mashup', prompt: '生成一张蒙娜丽莎喝可乐的油画。保持达芬奇原画的构图、光影和古典油画质感，手中加入现代可乐罐/瓶。自然融入，不违和。' },
-      { name: 'Black Myth Crossover', prompt: '生成一张黑神话·[经典角色名]的游戏介绍画面。3A 游戏品质，黑暗奇幻风格，中国神话元素，电影感光影，高细节。包含游戏标题和角色名。' },
-      { name: 'AI Builder Graffiti', prompt: 'Express a powerful AI builder in a graffiti sketch style. Rapid sketching, free transformation, improvised hand-drawing. Lines casual, exaggerated, varied in thickness. Colors in rough dry-brush blocks. Background mainly white space. Add signature "BlanPlan".' },
-      { name: 'Comic Con Cosplay', prompt: '[Game/Anime character] cosplay selfies at [event name]. Realistic photo style, convention center background with other cosplayers and booths in bokeh. Costume details accurate, natural lighting.' },
-    ],
-  },
-};
 
-let currentTab = Object.keys(TEMPLATES)[0];
 let currentImageB64 = null;
 let generating = false;
-let communityData = null;
+
+let TEMPLATE_DATA = null;   // { category: [ {id, title, source, prompt, thumbnail_url, ...} ] }
 
 let MODELS = null; let currentTplModel = 'gpt-image-2';
 
@@ -489,112 +327,55 @@ function updateTplOptions() {
 document.getElementById('modelSelect').addEventListener('change', () => { currentTplModel = document.getElementById('modelSelect').value; updateTplOptions(); });
 
 async function init() {
-  renderTabs();
-  renderTemplates();
+  await loadTemplates();
   await loadTplModels();
 }
 
-function renderTabs() {
-  const bar = document.getElementById('tabBar');
-  let html = Object.keys(TEMPLATES).map(t =>
-    `<button class="tab-btn${t === currentTab ? ' active' : ''}" onclick="switchTab('${t}')">${t}</button>`
-  ).join('');
-  html += `<button class="tab-btn${currentTab === '🌐 社群精選' ? ' active' : ''}" onclick="switchTab('🌐 社群精選')">🌐 社群精選</button>`;
-  bar.innerHTML = html;
-}
-
-function switchTab(tab) {
-  currentTab = tab;
-  renderTabs();
-  if (tab === '🌐 社群精選') {
-    loadCommunityTab();
-  } else {
-    renderTemplates();
-  }
-}
-
-async function loadCommunityTab() {
+async function loadTemplates() {
   const list = document.getElementById('templateList');
   list.innerHTML = '<div class="tpl-item" style="color:var(--muted)">Loading...</div>';
   try {
-    if (!communityData) {
-      const res = await fetch('/api/community-prompts');
-      communityData = await res.json();
-    }
-    renderCommunityTemplates();
-  } catch(e) {
+    const res = await fetch('/api/templates');
+    TEMPLATE_DATA = await res.json();
+    renderTemplateList();
+  } catch (e) {
     list.innerHTML = '<div class="tpl-item" style="color:oklch(55% 0.17 25)">Failed: ' + escHtml(e.message) + '</div>';
   }
 }
 
-function renderCommunityTemplates() {
+function renderTemplateList() {
   const list = document.getElementById('templateList');
-  if (!communityData) return;
-  const cats = Object.entries(communityData);
-  if (cats.length === 0) {
-    list.innerHTML = '<div class="tpl-item" style="color:var(--muted)">無社群資料</div>';
-    return;
-  }
+  if (!TEMPLATE_DATA) return;
+  const cats = Object.entries(TEMPLATE_DATA);
   list.innerHTML = cats.map(([cat, items]) => {
     const itemHtml = items.map((t, i) => {
-      const imgTag = t.image_url ? '<img src="' + escAttr(t.image_url) + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;margin-right:8px;flex-shrink:0" onerror="this.style.display=\'none\'" loading="lazy" />' : '';
-      const hasPrompt = t.prompt && t.prompt.trim();
-      const cls = hasPrompt ? 'tpl-item' : 'tpl-item no-prompt';
-      const title = hasPrompt ? t.title : '🖼 ' + t.title + '（無文字，點擊看圖）';
-      return '<div class="' + cls + '" data-cat="' + escAttr(cat) + '" data-idx="' + i + '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' + imgTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + escHtml(title) + '</span></div>';
+      const thumbTag = t.thumbnail_url
+        ? '<img src="' + escAttr(t.thumbnail_url) + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;margin-right:8px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
+        : '<div style="width:40px;height:40px;border-radius:4px;margin-right:8px;flex-shrink:0;background:var(--border)"></div>';
+      return '<div class="tpl-item" data-cat="' + escAttr(cat) + '" data-idx="' + i +
+             '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' +
+             thumbTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + escHtml(t.title) + '</span></div>';
     }).join('');
-    return '<div class="category"><div class="cat-header" onclick="toggleCat(this)"><span>' + escHtml(cat) + '</span><span class="badge" style="font-size:10px;color:var(--muted);margin-left:auto;margin-right:4px">' + items.length + '</span><span class="arrow">▼</span></div><div class="cat-items" style="max-height:600px">' + itemHtml + '</div></div>';
+    return '<div class="category"><div class="cat-header" onclick="toggleCat(this)"><span>' +
+           escHtml(cat) + '</span><span class="badge" style="font-size:10px;color:var(--muted);margin-left:auto;margin-right:4px">' +
+           items.length + '</span><span class="arrow">▼</span></div><div class="cat-items" style="max-height:600px">' +
+           itemHtml + '</div></div>';
   }).join('');
   list.querySelectorAll('.tpl-item[data-cat]').forEach(el => {
-    el.addEventListener('click', () => selectCommunity(parseInt(el.dataset.idx), el.dataset.cat, el));
+    el.addEventListener('click', () => selectTemplateItem(parseInt(el.dataset.idx), el.dataset.cat, el));
   });
 }
 
-function selectCommunity(idx, cat, el) {
+function selectTemplateItem(idx, cat, el) {
   document.querySelectorAll('.tpl-item').forEach(x => x.classList.remove('selected'));
   if (el) el.classList.add('selected');
-  const items = communityData[cat];
-  const item = items[idx];
-  if (item.prompt && item.prompt.trim()) {
-    document.getElementById('promptInput').value = item.prompt;
-    document.getElementById('resultArea').innerHTML = '<span class="empty">Prompt loaded. Click Generate to create image.</span>';
-  } else {
-    document.getElementById('promptInput').value = '';
-    if (item.image_url) {
-      const src = /^https?:\/\//.test(item.source_url || '') ? escAttr(item.source_url) : '';
-      document.getElementById('resultArea').innerHTML = '<div style="text-align:center"><img src="' + escAttr(item.image_url) + '" style="max-width:100%;max-height:300px;object-fit:contain" onerror="this.parentElement.innerHTML=\'<span class=empty>Image unavailable</span>\'" /><br /><span style="font-size:11px;color:var(--muted)">📌 此提示詞無文字，僅供圖片參考' + (src ? ' | <a href="' + src + '" target="_blank" rel="noopener" style="color:var(--accent)">原始來源</a>' : '') + '</span></div>';
-    } else {
-      document.getElementById('resultArea').innerHTML = '<span class="empty">此提示詞無文字內容，僅有來源連結</span>';
-    }
-  }
-}
-
-function renderTemplates() {
-  const list = document.getElementById('templateList');
-  const cats = TEMPLATES[currentTab];
-  list.innerHTML = Object.entries(cats).map(([cat, items]) => {
-    const itemHtml = items.map((t, i) =>
-      `<div class="tpl-item" onclick="selectTemplate('${cat.replace(/'/g, "\\'")}', ${i}, event)" title="${t.name}">${t.name}</div>`
-    ).join('');
-    return `<div class="category">
-      <div class="cat-header" onclick="toggleCat(this)">
-        <span>${cat}</span><span class="arrow">▼</span>
-      </div>
-      <div class="cat-items" style="max-height:600px">${itemHtml}</div>
-    </div>`;
-  }).join('');
+  const item = TEMPLATE_DATA[cat][idx];
+  document.getElementById('promptInput').value = item.prompt;
 }
 
 function toggleCat(el) {
   el.classList.toggle('collapsed');
   el.nextElementSibling.classList.toggle('hidden');
-}
-
-function selectTemplate(cat, idx, e) {
-  document.querySelectorAll('.tpl-item').forEach(el => el.classList.remove('selected'));
-  e.target.classList.add('selected');
-  const prompt = TEMPLATES[currentTab][cat][idx].prompt;
-  document.getElementById('promptInput').value = prompt;
 }
 
 function setStatus(text, isError) {

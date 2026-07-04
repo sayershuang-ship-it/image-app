@@ -374,3 +374,12 @@ def test_api_templates_groups_by_category_and_nulls_missing_thumbnail(client):
     assert portrait_items[0]["thumbnail_url"] == "/static/template_thumbs/2.jpg"
     assert portrait_items[0]["source"] == "community"
     assert portrait_items[0]["platform"] == "Instagram"
+
+
+def test_templates_page_has_no_hardcoded_templates_object(client):
+    """The old hardcoded TEMPLATES JS object must be gone — page now fetches
+    everything from /api/templates."""
+    rv = client.get("/templates")
+    body = rv.data.decode()
+    assert "const TEMPLATES = {" not in body
+    assert "/api/templates" in body
