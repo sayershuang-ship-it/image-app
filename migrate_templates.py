@@ -250,6 +250,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     limit = args.dry_run
 
+    from app import init_db
+    init_db()
+
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
 
