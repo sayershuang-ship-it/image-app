@@ -352,15 +352,15 @@ function renderTemplateList() {
   list.innerHTML = cats.map(([cat, items]) => {
     const itemHtml = items.map((t, i) => {
       const thumbTag = t.thumbnail_url
-        ? '<img src="' + escAttr(t.thumbnail_url) + '" style="width:64px;height:64px;object-fit:cover;border-radius:6px;margin-right:10px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
-        : '<div style="width:64px;height:64px;border-radius:6px;margin-right:10px;flex-shrink:0;background:var(--border)"></div>';
+        ? '<img src="' + escAttr(t.thumbnail_url) + '" style="width:88px;height:88px;object-fit:cover;border-radius:8px;margin-right:10px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
+        : '<div style="width:88px;height:88px;border-radius:8px;margin-right:10px;flex-shrink:0;background:var(--border)"></div>';
       return '<div class="tpl-item" data-cat="' + escAttr(cat) + '" data-idx="' + i +
              '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' +
              thumbTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + escHtml(t.title) + '</span></div>';
     }).join('');
     return '<div class="category"><div class="cat-header" onclick="toggleCat(this)"><span>' +
            escHtml(cat) + '</span><span class="badge" style="font-size:10px;color:var(--muted);margin-left:auto;margin-right:4px">' +
-           items.length + '</span><span class="arrow">▼</span></div><div class="cat-items" style="max-height:600px">' +
+           items.length + '</span><span class="arrow">▼</span></div><div class="cat-items" style="max-height:' + (items.length * 140 + 40) + 'px">' +
            itemHtml + '</div></div>';
   }).join('');
   list.querySelectorAll('.tpl-item[data-cat]').forEach(el => {
