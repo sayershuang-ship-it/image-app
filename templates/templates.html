@@ -46,7 +46,7 @@
   font-weight: 510;
   color: var(--accent);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   padding: 2px 8px;
   border: 1px solid var(--border);
 }
@@ -87,7 +87,7 @@
   font-weight: 510;
   text-transform: uppercase;
   color: var(--muted);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
@@ -95,6 +95,14 @@
   font-family: var(--font-mono);
 }
 .cat-header:hover { color: var(--fg); }
+.cat-cover {
+  width: 36px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--border);
+}
 .cat-header .arrow {
   font-size: 10px;
   transition: transform 0.2s;
@@ -137,7 +145,7 @@
   font-size: 10px;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
 .toolbar select, .toolbar input {
   background: var(--surface);
@@ -308,6 +316,24 @@ let generating = false;
 
 let TEMPLATE_DATA = null;   // { category: [ {id, title, source, prompt, thumbnail_url, ...} ] }
 
+// Category cover images (flux-pro-ultra, 3:2), shown next to each category header.
+const CAT_COVERS = {
+  'UI 與介面設計 UI / App Interfaces':                    '/static/image-flux-pro-ultra-mr5z4mpy.jpg',
+  '人像攝影 Portrait & Fashion Photography':              '/static/image-flux-pro-ultra-mr5z20n2.jpg',
+  '其他／創意混搭 Comparisons, Mashups & Other':          '/static/image-flux-pro-ultra-mr5z7kl7.jpg',
+  '品牌識別 Brand & Identity':                            '/static/image-flux-pro-ultra-mr5z6vw2.jpg',
+  '場景與街拍 Scenes & Documentary Photography':          '/static/image-flux-pro-ultra-mr5z62l4.jpg',
+  '奇幻科幻／遊戲 Fantasy, Sci-Fi & Gaming':              '/static/image-flux-pro-ultra-mr5z3gzn.jpg',
+  '字體排版 Typography & Calligraphy':                    '/static/image-flux-pro-ultra-mr5z7b0p.jpg',
+  '建築與空間 Architecture & Space':                      '/static/image-flux-pro-ultra-mr5z6etb.jpg',
+  '插畫與藝術 Illustration & Art':                        '/static/image-flux-pro-ultra-mr5z2kue.jpg',
+  '海報與視覺設計 Posters & Visual Design':               '/static/image-flux-pro-ultra-mr5z2uov.jpg',
+  '歷史文化 Historical & Cultural':                       '/static/image-flux-pro-ultra-mr5z596n.jpg',
+  '角色設計 Character Design':                            '/static/image-flux-pro-ultra-mr5z5o7d.jpg',
+  '資訊圖表 Infographics & Data Viz':                     '/static/image-flux-pro-ultra-mr5z412o.jpg',
+  '電商與產品 E-Commerce & Product':                      '/static/image-flux-pro-ultra-mr5z4awg.jpg',
+};
+
 let MODELS = null; let currentTplModel = 'gpt-image-2';
 
 async function loadTplModels() {
@@ -347,7 +373,7 @@ async function loadTemplates() {
     TEMPLATE_DATA = await res.json();
     renderTemplateList();
   } catch (e) {
-    list.innerHTML = '<div class="tpl-item" style="color:oklch(55% 0.17 25)">Failed: ' + escHtml(e.message) + '</div>';
+    list.innerHTML = '<div class="tpl-item" style="color:var(--danger)">Failed: ' + escHtml(e.message) + '</div>';
   }
 }
 
@@ -364,8 +390,14 @@ function renderTemplateList() {
              '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' +
              thumbTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + escHtml(t.title) + '</span></div>';
     }).join('');
-    return '<div class="category"><div class="cat-header" onclick="toggleCat(this)"><span>' +
-           escHtml(cat) + '</span><span class="badge" style="font-size:10px;color:var(--muted);margin-left:auto;margin-right:4px">' +
+    const cover = CAT_COVERS[cat] || '';
+    const coverTag = cover
+      ? '<img src="' + escAttr(cover) + '" class="cat-cover" loading="lazy" alt="" />'
+      : '<div class="cat-cover"></div>';
+    return '<div class="category"><div class="cat-header" onclick="toggleCat(this)">' +
+           '<span style="display:flex;align-items:center;gap:8px;overflow:hidden">' + coverTag +
+           '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(cat) + '</span></span>' +
+           '<span class="badge" style="font-size:10px;color:var(--muted);margin-left:auto;margin-right:4px">' +
            items.length + '</span><span class="arrow">▼</span></div><div class="cat-items" style="max-height:' + (items.length * 140 + 40) + 'px">' +
            itemHtml + '</div></div>';
   }).join('');
@@ -401,12 +433,12 @@ async function runTemplateSearch(query) {
     const res = await fetch('/api/templates/search?q=' + encodeURIComponent(query));
     const data = await res.json();
     if (!res.ok) {
-      list.innerHTML = '<div class="tpl-item" style="color:oklch(55% 0.17 25)">' + escHtml(data.error || 'Search failed') + '</div>';
+      list.innerHTML = '<div class="tpl-item" style="color:var(--danger)">' + escHtml(data.error || 'Search failed') + '</div>';
       return;
     }
     results = data;
   } catch (e) {
-    list.innerHTML = '<div class="tpl-item" style="color:oklch(55% 0.17 25)">Search failed: ' + escHtml(e.message) + '</div>';
+    list.innerHTML = '<div class="tpl-item" style="color:var(--danger)">Search failed: ' + escHtml(e.message) + '</div>';
     return;
   }
   window.SEARCH_RESULTS = results;
@@ -439,7 +471,7 @@ function toggleCat(el) {
 function setStatus(text, isError) {
   const el = document.getElementById('statusText');
   el.textContent = text;
-  el.style.color = isError ? 'oklch(55% 0.17 25)' : text === 'Done!' ? 'oklch(58% 0.12 160)' : '';
+  el.style.color = isError ? 'var(--danger)' : text === 'Done!' ? 'var(--success)' : '';
 }
 
 async function enhancePrompt() {
@@ -506,7 +538,7 @@ async function generateImage() {
       throw new Error('No image in response');
     }
   } catch(e) {
-    document.getElementById('resultArea').innerHTML = `<span class="empty" style="color:oklch(55% 0.17 25)">${escHtml(e.message)}</span>`;
+    document.getElementById('resultArea').innerHTML = `<span class="empty" style="color:var(--danger)">${escHtml(e.message)}</span>`;
     setStatus(e.message, true);
   } finally {
     generating = false;
