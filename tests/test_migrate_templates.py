@@ -157,3 +157,33 @@ def test_run_thumbnail_batch_sets_thumbnail_path(tmp_path):
         row = conn.execute("SELECT thumbnail_path FROM templates WHERE id=1").fetchone()
         assert row[0] == "static/template_thumbs/1.jpg"
         assert os.path.exists(os.path.join(str(tmp_path), "1.jpg"))
+
+
+def test_main_dry_run_limits_classification_and_thumbnail_work(monkeypatch, tmp_path):
+    db_path = _fresh_db()
+    monkeypatch.setattr(mt, "DB_PATH", db_path)
+    monkeypatch.setattr(mt, "STATIC_THUMB_DIR", str(tmp_path))
+    monkeypatch.setattr(mt, "OFFICIAL_JSON_PATH",
+                         os.path.join(os.path.dirname(__file__), "..", "official_templates.json"))
+
+    def fake_classify(client, batch):
+        return [{"id": r["id"], "category": mt.CATEGORIES[0], "thumbnail_prompt": "a concrete prompt"}
+                for r in batch]
+
+    def fake_generate_thumbnail(client, prompt, out_path):
+        with open(out_path, "wb") as f:
+            f.write(b"fake")
+        return True
+
+    monkeypatch.setattr(mt, "classify_batch", fake_classify)
+    monkeypatch.setattr(mt, "generate_thumbnail", fake_generate_thumbnail)
+    monkeypatch.setattr(mt, "get_openai_client", lambda: MagicMock())
+    monkeypatch.setattr(mt, "get_gemini_client", lambda: MagicMock())
+
+    mt.main(["--dry-run", "3"])
+
+    with sqlite3.connect(db_path) as conn:
+        classified = conn.execute("SELECT COUNT(*) FROM templates WHERE category != ''").fetchone()[0]
+        thumbnailed = conn.execute("SELECT COUNT(*) FROM templates WHERE thumbnail_path IS NOT NULL").fetchone()[0]
+    assert classified == 3
+    assert thumbnailed == 3

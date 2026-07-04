@@ -20,6 +20,7 @@ import sqlite3
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "prompts.db")
 OFFICIAL_JSON_PATH = os.path.join(os.path.dirname(__file__), "official_templates.json")
+STATIC_THUMB_DIR = os.path.join(os.path.dirname(__file__), "static", "template_thumbs")
 
 CATEGORIES = [
     "人像攝影 Portrait & Fashion Photography",
@@ -232,19 +233,51 @@ def run_thumbnail_batch(conn: sqlite3.Connection, client, static_dir: str, limit
     return succeeded, failed
 
 
-def main():
+def get_openai_client():
+    from app import get_client
+    return get_client()
+
+
+def get_gemini_client():
+    from app import get_google_client
+    return get_google_client()
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", type=int, default=None,
-                         help="Only process the first N unclassified/unthumbnailed rows")
-    args = parser.parse_args()
+                         help="Only classify/thumbnail the first N unfinished rows")
+    args = parser.parse_args(argv)
+    limit = args.dry_run
 
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
+
         official = load_official_templates(OFFICIAL_JSON_PATH)
         community = load_community_rows(DB_PATH)
         inserted = insert_skeleton_rows(conn, official, community)
-        print(f"Inserted {inserted} new skeleton rows "
-              f"({len(official)} official + {len(community)} community candidates).")
+        print(f"Step A/B: inserted {inserted} new skeleton rows.")
+
+        openai_client = get_openai_client()
+        unclassified = get_unclassified_rows(conn, limit=limit)
+        classified_count = 0
+        for batch in build_batches(unclassified):
+            results = classify_batch(openai_client, batch)
+            apply_classification_results(conn, results)
+            classified_count += len(results)
+        print(f"Step C: classified {classified_count}/{len(unclassified)} candidate rows.")
+
+        gemini_client = get_gemini_client()
+        succeeded, failed = run_thumbnail_batch(conn, gemini_client, STATIC_THUMB_DIR, limit=limit)
+        print(f"Step D: generated {succeeded} thumbnails, {failed} failed.")
+
+        total = conn.execute("SELECT COUNT(*) FROM templates").fetchone()[0]
+        still_uncategorized = conn.execute(
+            "SELECT COUNT(*) FROM templates WHERE category = ''").fetchone()[0]
+        still_unthumbnailed = conn.execute(
+            "SELECT COUNT(*) FROM templates WHERE thumbnail_path IS NULL").fetchone()[0]
+        print(f"Summary: {total} total rows, {still_uncategorized} still uncategorized, "
+              f"{still_unthumbnailed} still missing a thumbnail. Re-run this script to retry those.")
 
 
 if __name__ == "__main__":
