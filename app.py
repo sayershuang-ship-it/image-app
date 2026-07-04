@@ -1001,7 +1001,11 @@ def templates_search_api():
 
     scored = []
     for r in rows:
-        vector = json.loads(r["embedding"])
+        try:
+            vector = json.loads(r["embedding"])
+        except (json.JSONDecodeError, TypeError):
+            print(f"Skipping template id={r['id']}: malformed embedding JSON")
+            continue
         similarity = cosine_similarity(query_vector, vector)
         scored.append((similarity, r))
     scored.sort(key=lambda pair: pair[0], reverse=True)

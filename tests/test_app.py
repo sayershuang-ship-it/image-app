@@ -441,6 +441,31 @@ def test_api_templates_search_returns_top_matches_sorted_by_similarity(client):
     assert data[1]["thumbnail_url"] == "/static/template_thumbs/2.jpg"
 
 
+def test_api_templates_search_skips_row_with_malformed_embedding(client):
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        conn.execute(
+            "INSERT INTO templates (id, source, title, category, prompt, "
+            "thumbnail_prompt, thumbnail_path, embedding) VALUES "
+            "(1, 'official', 'Good Match', 'cat', 'p1', 'tp1', NULL, ?)",
+            (json.dumps([1.0, 0.0]).encode(),),
+        )
+        conn.execute(
+            "INSERT INTO templates (id, source, title, category, prompt, "
+            "thumbnail_prompt, thumbnail_path, embedding) VALUES "
+            "(2, 'community', 'Bad Match', 'cat', 'p2', 'tp2', NULL, ?)",
+            (b"not valid json",),
+        )
+
+    with patch("app.embed_text", return_value=[0.9, 0.1]):
+        rv = client.get("/api/templates/search?q=test+query")
+
+    assert rv.status_code == 200
+    data = rv.get_json()
+    titles = [item["title"] for item in data]
+    assert "Good Match" in titles
+    assert "Bad Match" not in titles
+
+
 def test_api_templates_search_requires_q(client):
     rv = client.get("/api/templates/search")
     assert rv.status_code == 400
