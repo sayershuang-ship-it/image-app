@@ -244,6 +244,26 @@
   .sidebar { width: 100%; min-width: 0; max-height: 40vh; }
   .main { min-height: 0; }
 }
+
+.thumb-lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: oklch(0% 0 0 / 0.85);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  cursor: zoom-out;
+}
+.thumb-lightbox.show { display: flex; }
+.thumb-lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius);
+}
+.tpl-thumb { cursor: zoom-in; }
 {% endblock %}
 
 {% block content %}
@@ -301,6 +321,9 @@
         <button class="btn btn-secondary" onclick="copyImage()">Copy</button>
       </div>
     </main>
+  </div>
+  <div class="thumb-lightbox" id="thumbLightbox" onclick="closeThumbLightbox()">
+    <img id="thumbLightboxImg" src="" alt="" />
   </div>
 {% endblock %}
 
@@ -384,7 +407,7 @@ function renderTemplateList() {
   list.innerHTML = cats.map(([cat, items]) => {
     const itemHtml = items.map((t, i) => {
       const thumbTag = t.thumbnail_url
-        ? '<img src="' + escAttr(t.thumbnail_url) + '" style="width:88px;height:88px;object-fit:cover;border-radius:8px;margin-right:10px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
+        ? '<img src="' + escAttr(t.thumbnail_url) + '" class="tpl-thumb" data-full="' + escAttr(t.thumbnail_url) + '" style="width:88px;height:88px;object-fit:cover;border-radius:8px;margin-right:10px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
         : '<div style="width:88px;height:88px;border-radius:8px;margin-right:10px;flex-shrink:0;background:var(--border)"></div>';
       return '<div class="tpl-item" data-cat="' + escAttr(cat) + '" data-idx="' + i +
              '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' +
@@ -402,8 +425,21 @@ function renderTemplateList() {
            itemHtml + '</div></div>';
   }).join('');
   list.querySelectorAll('.tpl-item[data-cat]').forEach(el => {
-    el.addEventListener('click', () => selectTemplateItem(parseInt(el.dataset.idx), el.dataset.cat, el));
+    el.addEventListener('click', (e) => {
+      const thumb = e.target.closest('.tpl-thumb');
+      if (thumb) { openThumbLightbox(thumb.dataset.full); return; }
+      selectTemplateItem(parseInt(el.dataset.idx), el.dataset.cat, el);
+    });
   });
+}
+
+function openThumbLightbox(url) {
+  document.getElementById('thumbLightboxImg').src = url;
+  document.getElementById('thumbLightbox').classList.add('show');
+}
+
+function closeThumbLightbox() {
+  document.getElementById('thumbLightbox').classList.remove('show');
 }
 
 function selectTemplateItem(idx, cat, el) {
@@ -452,7 +488,11 @@ async function runTemplateSearch(query) {
   }).join('');
   list.innerHTML = itemHtml || '<div class="tpl-item" style="color:var(--muted)">No matches</div>';
   list.querySelectorAll('.tpl-item[data-search-idx]').forEach(el => {
-    el.addEventListener('click', () => selectSearchResult(parseInt(el.dataset.searchIdx), el));
+    el.addEventListener('click', (e) => {
+      const thumb = e.target.closest('.tpl-thumb');
+      if (thumb) { openThumbLightbox(thumb.dataset.full); return; }
+      selectSearchResult(parseInt(el.dataset.searchIdx), el);
+    });
   });
 }
 
