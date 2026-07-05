@@ -485,6 +485,15 @@ def test_templates_page_has_search_input(client):
     assert "/api/templates/search" in body
 
 
+def test_templates_page_has_no_leftover_collapsible_category_list(client):
+    """The old always-visible 14-category collapsible sidebar list is gone —
+    replaced by the category-card grid landing view."""
+    rv = client.get("/templates")
+    body = rv.data.decode()
+    assert "renderTemplateList" not in body
+    assert "toggleCat" not in body
+
+
 def test_templates_page_has_grid_view_scaffolding(client):
     """The templates page must render the new grid-view containers, with
     the workspace view hidden by default (grid is the landing view)."""
