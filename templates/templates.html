@@ -50,66 +50,23 @@
   padding: 2px 8px;
   border: 1px solid var(--border);
 }
-.tab-bar {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.tab-btn {
-  flex: 0 0 auto;
-  padding: 10px 14px;
-  white-space: nowrap;
-  font-size: 14px;
-  font-weight: 510;
-  color: var(--muted);
-  cursor: pointer;
-  border: none;
+.btn-back {
   background: none;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
   font-family: var(--font-body);
-  white-space: nowrap;
+  cursor: pointer;
+  padding: 0;
+  transition: color var(--ease);
 }
-.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
-.tab-btn:hover { color: var(--fg); }
+.btn-back:hover { color: var(--accent); }
 
 .template-list {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
 }
-.category { margin-bottom: 4px; }
-.cat-header {
-  padding: 10px 12px;
-  font-size: 12px;
-  font-weight: 510;
-  text-transform: uppercase;
-  color: var(--muted);
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-family: var(--font-mono);
-}
-.cat-header:hover { color: var(--fg); }
-.cat-cover {
-  width: 36px;
-  height: 24px;
-  object-fit: cover;
-  border-radius: 4px;
-  flex-shrink: 0;
-  background: var(--border);
-}
-.cat-header .arrow {
-  font-size: 12px;
-  transition: transform 0.2s;
-}
-.cat-header.collapsed .arrow { transform: rotate(-90deg); }
-.cat-items { overflow: hidden; transition: max-height 0.3s; }
-.cat-items.hidden { max-height: 0 !important; }
 .tpl-item {
   padding: 8px 12px 8px 20px;
   font-size: 15px;
@@ -327,7 +284,7 @@
   <div class="workspace" id="workspaceView" style="display:none">
     <aside class="sidebar">
       <div class="sidebar-header">
-        <h2>Prompt Templates</h2><span class="badge">Templates</span>
+        <button class="btn-back" onclick="showGridView()">← 回分類網格</button>
       </div>
       <div class="template-list" id="templateList"></div>
     </aside>
@@ -468,6 +425,9 @@ function renderCategoryGrid() {
            '<p>' + items.length + ' 個範本</p>' +
            '</div></div>';
   }).join('');
+  grid.querySelectorAll('.category-card').forEach(el => {
+    el.addEventListener('click', () => showCategoryInWorkspace(el.dataset.cat));
+  });
 }
 
 function showGridView() {
@@ -480,37 +440,39 @@ function showWorkspaceView() {
   document.getElementById('workspaceView').style.display = '';
 }
 
-function renderTemplateList() {
+function renderFlatItemList(items, headerLabel) {
   const list = document.getElementById('templateList');
-  if (!TEMPLATE_DATA) return;
-  const cats = Object.entries(TEMPLATE_DATA);
-  list.innerHTML = cats.map(([cat, items]) => {
-    const itemHtml = items.map((t, i) => {
-      const thumbTag = t.thumbnail_url
-        ? '<img src="' + escAttr(t.thumbnail_url) + '" class="tpl-thumb" data-full="' + escAttr(t.thumbnail_url) + '" style="width:88px;height:88px;object-fit:cover;border-radius:8px;margin-right:10px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
-        : '<div style="width:88px;height:88px;border-radius:8px;margin-right:10px;flex-shrink:0;background:var(--border)"></div>';
-      return '<div class="tpl-item" data-cat="' + escAttr(cat) + '" data-idx="' + i +
-             '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' +
-             thumbTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + escHtml(t.title) + '</span></div>';
-    }).join('');
-    const cover = CAT_COVERS[cat] || '';
-    const coverTag = cover
-      ? '<img src="' + escAttr(cover) + '" class="cat-cover" loading="lazy" alt="" />'
-      : '<div class="cat-cover"></div>';
-    return '<div class="category"><div class="cat-header" onclick="toggleCat(this)">' +
-           '<span style="display:flex;align-items:center;gap:8px;overflow:hidden">' + coverTag +
-           '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(cat) + '</span></span>' +
-           '<span class="badge" style="font-size:12px;color:var(--muted);margin-left:auto;margin-right:4px">' +
-           items.length + '</span><span class="arrow">▼</span></div><div class="cat-items" style="max-height:' + (items.length * 140 + 40) + 'px">' +
-           itemHtml + '</div></div>';
+  const itemHtml = items.map((t, i) => {
+    const thumbTag = t.thumbnail_url
+      ? '<img src="' + escAttr(t.thumbnail_url) + '" class="tpl-thumb" data-full="' + escAttr(t.thumbnail_url) + '" style="width:88px;height:88px;object-fit:cover;border-radius:8px;margin-right:10px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
+      : '<div style="width:88px;height:88px;border-radius:8px;margin-right:10px;flex-shrink:0;background:var(--border)"></div>';
+    return '<div class="tpl-item" data-idx="' + i +
+           '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' +
+           thumbTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + escHtml(t.title) + '</span></div>';
   }).join('');
-  list.querySelectorAll('.tpl-item[data-cat]').forEach(el => {
+  list.innerHTML =
+    '<div style="padding:10px 12px;font-size:12px;font-weight:510;text-transform:uppercase;color:var(--muted);letter-spacing:0.06em;font-family:var(--font-mono)">' +
+    escHtml(headerLabel) + ' · ' + items.length + '</div>' +
+    (itemHtml || '<div class="tpl-item" style="color:var(--muted)">No matches</div>');
+  list.querySelectorAll('.tpl-item[data-idx]').forEach(el => {
     el.addEventListener('click', (e) => {
       const thumb = e.target.closest('.tpl-thumb');
       if (thumb) { openThumbLightbox(thumb.dataset.full); return; }
-      selectTemplateItem(parseInt(el.dataset.idx), el.dataset.cat, el);
+      selectFlatItem(items, parseInt(el.dataset.idx), el);
     });
   });
+}
+
+function selectFlatItem(items, idx, el) {
+  document.querySelectorAll('.tpl-item').forEach(x => x.classList.remove('selected'));
+  if (el) el.classList.add('selected');
+  document.getElementById('promptInput').value = items[idx].prompt;
+}
+
+function showCategoryInWorkspace(cat) {
+  const items = TEMPLATE_DATA[cat];
+  renderFlatItemList(items, cat);
+  showWorkspaceView();
 }
 
 function openThumbLightbox(url) {
@@ -522,20 +484,13 @@ function closeThumbLightbox() {
   document.getElementById('thumbLightbox').classList.remove('show');
 }
 
-function selectTemplateItem(idx, cat, el) {
-  document.querySelectorAll('.tpl-item').forEach(x => x.classList.remove('selected'));
-  if (el) el.classList.add('selected');
-  const item = TEMPLATE_DATA[cat][idx];
-  document.getElementById('promptInput').value = item.prompt;
-}
-
 let searchDebounceTimer = null;
 
 document.getElementById('templateSearchInput').addEventListener('input', (e) => {
   clearTimeout(searchDebounceTimer);
   const query = e.target.value.trim();
   if (!query) {
-    renderTemplateList();
+    showGridView();
     return;
   }
   searchDebounceTimer = setTimeout(() => runTemplateSearch(query), 300);
@@ -543,6 +498,7 @@ document.getElementById('templateSearchInput').addEventListener('input', (e) => 
 
 async function runTemplateSearch(query) {
   const list = document.getElementById('templateList');
+  showWorkspaceView();
   list.innerHTML = '<div class="tpl-item" style="color:var(--muted)">Searching...</div>';
   let results;
   try {
@@ -557,35 +513,7 @@ async function runTemplateSearch(query) {
     list.innerHTML = '<div class="tpl-item" style="color:var(--danger)">Search failed: ' + escHtml(e.message) + '</div>';
     return;
   }
-  window.SEARCH_RESULTS = results;
-  const itemHtml = results.map((t, i) => {
-    const thumbTag = t.thumbnail_url
-      ? '<img src="' + escAttr(t.thumbnail_url) + '" style="width:88px;height:88px;object-fit:cover;border-radius:8px;margin-right:10px;flex-shrink:0" onerror="this.src=\'/static/template_thumb_placeholder.svg\'" loading="lazy" />'
-      : '<div style="width:88px;height:88px;border-radius:8px;margin-right:10px;flex-shrink:0;background:var(--border)"></div>';
-    return '<div class="tpl-item" data-search-idx="' + i +
-           '" style="display:flex;align-items:center;gap:4px" title="' + escAttr(t.title) + '">' +
-           thumbTag + '<span style="overflow:hidden;text-overflow:ellipsis">' + escHtml(t.title) + '</span></div>';
-  }).join('');
-  list.innerHTML = itemHtml || '<div class="tpl-item" style="color:var(--muted)">No matches</div>';
-  list.querySelectorAll('.tpl-item[data-search-idx]').forEach(el => {
-    el.addEventListener('click', (e) => {
-      const thumb = e.target.closest('.tpl-thumb');
-      if (thumb) { openThumbLightbox(thumb.dataset.full); return; }
-      selectSearchResult(parseInt(el.dataset.searchIdx), el);
-    });
-  });
-}
-
-function selectSearchResult(idx, el) {
-  document.querySelectorAll('.tpl-item').forEach(x => x.classList.remove('selected'));
-  if (el) el.classList.add('selected');
-  const item = window.SEARCH_RESULTS[idx];
-  document.getElementById('promptInput').value = item.prompt;
-}
-
-function toggleCat(el) {
-  el.classList.toggle('collapsed');
-  el.nextElementSibling.classList.toggle('hidden');
+  renderFlatItemList(results, '搜尋結果');
 }
 
 function setStatus(text, isError) {
