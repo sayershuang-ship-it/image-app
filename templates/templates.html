@@ -264,17 +264,70 @@
   border-radius: var(--radius);
 }
 .tpl-thumb { cursor: zoom-in; }
+
+.grid-view-search {
+  padding: 24px 48px 0;
+}
+.grid-view-search input {
+  width: 100%;
+  max-width: 640px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 10px 14px;
+  font-size: 15px;
+  font-family: var(--font-body);
+  border-radius: var(--radius-sm);
+}
+.grid-view-search input:focus { outline: none; border-color: var(--accent); }
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  padding: 24px 48px 48px;
+}
+.category-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color var(--ease);
+}
+.category-card:hover { border-color: var(--accent); }
+.category-card img, .category-card-cover-placeholder {
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  display: block;
+  background: var(--border);
+}
+.category-card-body { padding: 14px 16px; }
+.category-card-body h3 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 590;
+  letter-spacing: -0.01em;
+}
+.category-card-body p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}
 {% endblock %}
 
 {% block content %}
-  <div class="workspace">
+  <div class="grid-view" id="gridView">
+    <div class="grid-view-search">
+      <input type="text" id="templateSearchInput" placeholder="語意搜尋模板…" />
+    </div>
+    <div class="category-grid" id="categoryGrid"></div>
+  </div>
+  <div class="workspace" id="workspaceView" style="display:none">
     <aside class="sidebar">
       <div class="sidebar-header">
         <h2>Prompt Templates</h2><span class="badge">Templates</span>
-      </div>
-      <div style="padding:10px 20px;border-bottom:1px solid var(--border)">
-        <input type="text" id="templateSearchInput" placeholder="語意搜尋模板…"
-               style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--fg);padding:8px 10px;font-size:15px;font-family:var(--font-body)" />
       </div>
       <div class="template-list" id="templateList"></div>
     </aside>
@@ -389,15 +442,42 @@ async function init() {
 }
 
 async function loadTemplates() {
-  const list = document.getElementById('templateList');
-  list.innerHTML = '<div class="tpl-item" style="color:var(--muted)">Loading...</div>';
+  const grid = document.getElementById('categoryGrid');
+  grid.innerHTML = '<p style="padding:24px 48px;color:var(--muted)">Loading...</p>';
   try {
     const res = await fetch('/api/templates');
     TEMPLATE_DATA = await res.json();
-    renderTemplateList();
+    renderCategoryGrid();
   } catch (e) {
-    list.innerHTML = '<div class="tpl-item" style="color:var(--danger)">Failed: ' + escHtml(e.message) + '</div>';
+    grid.innerHTML = '<p style="padding:24px 48px;color:var(--danger)">Failed: ' + escHtml(e.message) + '</p>';
   }
+}
+
+function renderCategoryGrid() {
+  const grid = document.getElementById('categoryGrid');
+  if (!TEMPLATE_DATA) return;
+  grid.innerHTML = Object.entries(TEMPLATE_DATA).map(([cat, items]) => {
+    const cover = CAT_COVERS[cat] || '';
+    const coverTag = cover
+      ? '<img src="' + escAttr(cover) + '" loading="lazy" alt="" />'
+      : '<div class="category-card-cover-placeholder"></div>';
+    return '<div class="category-card" data-cat="' + escAttr(cat) + '">' +
+           coverTag +
+           '<div class="category-card-body">' +
+           '<h3>' + escHtml(cat) + '</h3>' +
+           '<p>' + items.length + ' 個範本</p>' +
+           '</div></div>';
+  }).join('');
+}
+
+function showGridView() {
+  document.getElementById('gridView').style.display = '';
+  document.getElementById('workspaceView').style.display = 'none';
+}
+
+function showWorkspaceView() {
+  document.getElementById('gridView').style.display = 'none';
+  document.getElementById('workspaceView').style.display = '';
 }
 
 function renderTemplateList() {

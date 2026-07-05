@@ -483,3 +483,18 @@ def test_templates_page_has_search_input(client):
     body = rv.data.decode()
     assert 'id="templateSearchInput"' in body
     assert "/api/templates/search" in body
+
+
+def test_templates_page_has_grid_view_scaffolding(client):
+    """The templates page must render the new grid-view containers, with
+    the workspace view hidden by default (grid is the landing view)."""
+    rv = client.get("/templates")
+    body = rv.data.decode()
+    assert 'id="gridView"' in body
+    assert 'id="categoryGrid"' in body
+    assert 'id="workspaceView"' in body
+    # Workspace must be hidden on initial render — the grid is what's seen first.
+    workspace_pos = body.index('id="workspaceView"')
+    # The workspaceView opening tag must carry a hidden style within the
+    # next 200 characters (i.e. on the same opening tag).
+    assert 'display:none' in body[workspace_pos:workspace_pos + 200]
