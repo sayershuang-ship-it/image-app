@@ -468,16 +468,14 @@ function closeThumbLightbox() {
   document.getElementById('thumbLightbox').classList.remove('show');
 }
 
-let searchDebounceTimer = null;
-
-document.getElementById('templateSearchInput').addEventListener('input', (e) => {
-  clearTimeout(searchDebounceTimer);
+document.getElementById('templateSearchInput').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
   const query = e.target.value.trim();
   if (!query) {
     showGridView();
     return;
   }
-  searchDebounceTimer = setTimeout(() => runTemplateSearch(query), 300);
+  runTemplateSearch(query);
 });
 
 async function runTemplateSearch(query) {

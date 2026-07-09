@@ -195,7 +195,7 @@ def generate_thumbnail(client, thumbnail_prompt: str, out_path: str) -> bool:
         from google.genai import types as genai_types
 
         config = genai_types.GenerateContentConfig(
-            response_modalities=["IMAGE", "TEXT"],
+            response_modalities=["IMAGE"],
             image_config=genai_types.ImageConfig(aspect_ratio="1:1"),
         )
         response = client.models.generate_content(

@@ -515,7 +515,7 @@ def _generate_gemini(prompt: str, image_b64: str, quality: str,
         contents = [prompt]
 
     config = genai_types.GenerateContentConfig(
-        response_modalities=["IMAGE", "TEXT"],
+        response_modalities=["IMAGE"],
         image_config=genai_types.ImageConfig(aspect_ratio=aspect_ratio),
     )
 
