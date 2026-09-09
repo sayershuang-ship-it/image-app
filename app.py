@@ -246,10 +246,54 @@ _MODELS = {
         "sizes": ["1024x1024", "1792x1024", "1024x1792", "1536x1024", "1024x1536", "2048x2048"],
         "max_n": 4,
         "supports_edit": True,
+        "supports_custom_size": True,  # OpenAI SDK >=3.10: arbitrary WxH also works for gpt-image-2
         "cost_table": {
             "low":    {"1024x1024": 0.011, "1024x1792": 0.016, "1792x1024": 0.016},
             "medium": {"1024x1024": 0.042, "1024x1792": 0.063, "1792x1024": 0.063},
             "high":   {"1024x1024": 0.167, "1024x1792": 0.250, "1792x1024": 0.250,
+                       "2048x2048": 0.167},
+        },
+    },
+    "gpt-image-2.5-sunburst": {
+        "name": "GPT Image 2.5 Sunburst",
+        "provider": "openai",
+        "qualities": ["low", "medium", "high", "xhigh", "max"],
+        "sizes": ["1024x1024", "1792x1024", "1024x1792", "1536x1024", "1024x1536", "2048x2048"],
+        "max_n": 4,
+        "supports_edit": True,
+        "supports_custom_size": True,
+        # NOTE: cost_table reuses gpt-image-2's per-size prices as an ESTIMATE —
+        # OpenAI has not published gpt-image-2.5 pricing as of 2026-09-10. xhigh/max
+        # reuse the 'high' row (no basis to guess a specific multiplier); replace
+        # once OpenAI publishes real numbers.
+        "cost_table": {
+            "low":    {"1024x1024": 0.011, "1024x1792": 0.016, "1792x1024": 0.016},
+            "medium": {"1024x1024": 0.042, "1024x1792": 0.063, "1792x1024": 0.063},
+            "high":   {"1024x1024": 0.167, "1024x1792": 0.250, "1792x1024": 0.250,
+                       "2048x2048": 0.167},
+            "xhigh":  {"1024x1024": 0.167, "1024x1792": 0.250, "1792x1024": 0.250,
+                       "2048x2048": 0.167},
+            "max":    {"1024x1024": 0.167, "1024x1792": 0.250, "1792x1024": 0.250,
+                       "2048x2048": 0.167},
+        },
+    },
+    "gpt-image-2.5-flare": {
+        "name": "GPT Image 2.5 Flare",
+        "provider": "openai",
+        "qualities": ["low", "medium", "high", "xhigh", "max"],
+        "sizes": ["1024x1024", "1792x1024", "1024x1792", "1536x1024", "1024x1536", "2048x2048"],
+        "max_n": 4,
+        "supports_edit": True,
+        "supports_custom_size": True,
+        # NOTE: same estimate caveat as gpt-image-2.5-sunburst above.
+        "cost_table": {
+            "low":    {"1024x1024": 0.011, "1024x1792": 0.016, "1792x1024": 0.016},
+            "medium": {"1024x1024": 0.042, "1024x1792": 0.063, "1792x1024": 0.063},
+            "high":   {"1024x1024": 0.167, "1024x1792": 0.250, "1792x1024": 0.250,
+                       "2048x2048": 0.167},
+            "xhigh":  {"1024x1024": 0.167, "1024x1792": 0.250, "1792x1024": 0.250,
+                       "2048x2048": 0.167},
+            "max":    {"1024x1024": 0.167, "1024x1792": 0.250, "1792x1024": 0.250,
                        "2048x2048": 0.167},
         },
     },
@@ -276,10 +320,66 @@ _GEMINI_ASPECT_MAP = {
     "1024x1536": "3:4",
 }
 
+_SIZE_RE = re.compile(r"^(\d+)x(\d+)$")
+
+def validate_custom_size(size: str) -> tuple:
+    """Validate a WIDTHxHEIGHT string against OpenAI's gpt-image-2.5 rules
+    (openai-python v3.10.0 / openai-node v7.12.0 release notes):
+      - both dimensions divisible by 16
+      - aspect ratio between 1:3 and 3:1
+      - max 3840x2160
+      - anything above 2560x1440 is flagged "experimental" but still allowed
+
+    Returns (is_valid, error, is_experimental).
+    """
+    m = _SIZE_RE.match(size or "")
+    if not m:
+        return False, f"Invalid size format: {size!r} (expected WIDTHxHEIGHT)", False
+    w, h = int(m.group(1)), int(m.group(2))
+    if w == 0 or h == 0:
+        return False, "Width and height must be positive", False
+    if w % 16 != 0 or h % 16 != 0:
+        return False, f"Width and height must each be a multiple of 16 (got {w}x{h})", False
+    ratio = w / h
+    if ratio < (1 / 3) or ratio > 3:
+        return False, f"Aspect ratio must be between 1:3 and 3:1 (got {w}:{h})", False
+    if w > 3840 or h > 2160:
+        return False, f"Size exceeds the maximum of 3840x2160 (got {w}x{h})", False
+    return True, None, (w > 2560 or h > 1440)
+
+def validate_size_for_model(model_config: dict, size: str) -> tuple:
+    """size is OK if it's one of the model's presets, or — when the model has
+    supports_custom_size — a valid custom WIDTHxHEIGHT. Returns (ok, error)."""
+    if size in model_config["sizes"]:
+        return True, None
+    if not model_config.get("supports_custom_size"):
+        return False, f"Size {size!r} is not supported by this model"
+    ok, err, _is_experimental = validate_custom_size(size)
+    return (True, None) if ok else (False, err)
+
+def _pixel_count(size: str):
+    m = _SIZE_RE.match(size or "")
+    return int(m.group(1)) * int(m.group(2)) if m else None
+
 def calc_cost(model: str, quality: str, size: str, n: int = 1) -> float:
     model_table = _MODELS.get(model, {}).get("cost_table", {})
+    quality_table = model_table.get(quality, {})
     default = 0.042
-    return round(model_table.get(quality, {}).get(size, default) * n, 4)
+    if size in quality_table:
+        return round(quality_table[size] * n, 4)
+    # Custom/unknown size: scale the nearest known size's price (same model +
+    # quality) by pixel-count ratio, instead of reporting a flat default that
+    # would badly under-estimate a large custom request (e.g. 3840x2160).
+    px = _pixel_count(size)
+    if px and quality_table:
+        best_size, best_price = min(
+            quality_table.items(),
+            key=lambda kv: abs((_pixel_count(kv[0]) or 0) - px)
+        )
+        best_px = _pixel_count(best_size)
+        if best_px:
+            return round(best_price * (px / best_px) * n, 4)
+    return round(default * n, 4)
 
 def save_prompt(prompt, image_b64, revised, quality, size, model,
                 result_url, result_b64, success, error_msg="",
@@ -582,6 +682,10 @@ def _generate_openai(prompt: str, image_b64: str, quality: str,
         buf.seek(0)
         buf.name = 'reference.png'
         kwargs["image"] = buf
+        # NOTE: edit_sizes intentionally stays a fixed allowlist even for the
+        # 2.5 models' custom-size support — non-preset sizes fall back to
+        # 'auto' on the edit (images.edit) path only. Generation (images.generate)
+        # supports the full custom-size range validated by validate_size_for_model().
         edit_sizes = {'256x256', '512x512', '1024x1024', '1536x1024', '1024x1536', 'auto'}
         if size not in edit_sizes:
             kwargs["size"] = 'auto'
@@ -660,6 +764,9 @@ def generate():
     model_config = _MODELS[model]
     if quality not in model_config["qualities"]:
         quality = model_config["qualities"][0]
+    size_ok, size_err = validate_size_for_model(model_config, size)
+    if not size_ok:
+        return jsonify(error=size_err), 400
 
     if not prompt:
         return jsonify(error="Prompt is required"), 400
@@ -725,6 +832,7 @@ def api_models():
             "sizes": cfg["sizes"],
             "max_n": cfg["max_n"],
             "supports_edit": cfg["supports_edit"],
+            "supports_custom_size": cfg.get("supports_custom_size", False),
             "cost_table": cfg["cost_table"],
         })
     return jsonify(models=models, google_key_set=bool(GOOGLE_API_KEY))
@@ -795,6 +903,9 @@ def batch_generate():
     model_config = _MODELS[model]
     if quality not in model_config["qualities"]:
         quality = model_config["qualities"][0]
+    size_ok, size_err = validate_size_for_model(model_config, size)
+    if not size_ok:
+        return jsonify(error=size_err), 400
 
     if not prompts or not isinstance(prompts, list):
         return jsonify(error="prompts must be a non-empty list"), 400
@@ -877,6 +988,9 @@ def api_v1_generate():
     model_config = _MODELS[model]
     if quality not in model_config["qualities"]:
         quality = model_config["qualities"][0]
+    size_ok, size_err = validate_size_for_model(model_config, size)
+    if not size_ok:
+        return jsonify(error=size_err), 400
 
     if negative:
         prompt = f"{prompt}\n\nNegative Prompt:\n{negative}"

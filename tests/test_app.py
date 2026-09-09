@@ -250,7 +250,8 @@ def test_api_models_shape(client):
     assert len(body["models"]) >= 2
     assert isinstance(body["google_key_set"], bool)
     for m in body["models"]:
-        for key in ["id", "name", "provider", "qualities", "sizes", "max_n", "supports_edit", "cost_table"]:
+        for key in ["id", "name", "provider", "qualities", "sizes", "max_n", "supports_edit",
+                    "supports_custom_size", "cost_table"]:
             assert key in m, f"missing key {key} in model {m.get('id', '?')}"
         assert len(m["qualities"]) > 0
         for q in m["qualities"]:
@@ -507,3 +508,91 @@ def test_templates_page_has_grid_view_scaffolding(client):
     # The workspaceView opening tag must carry a hidden style within the
     # next 200 characters (i.e. on the same opening tag).
     assert 'display:none' in body[workspace_pos:workspace_pos + 200]
+
+
+# ── GPT Image 2.5 (sunburst / flare) ────────────────────────────────────────
+
+def test_new_models_config_well_formed():
+    for mid in ("gpt-image-2.5-sunburst", "gpt-image-2.5-flare"):
+        cfg = app_module._MODELS[mid]
+        assert cfg["provider"] == "openai"
+        assert set(["low", "medium", "high", "xhigh", "max"]).issubset(cfg["qualities"])
+        assert cfg["supports_custom_size"] is True
+        for q in cfg["qualities"]:
+            assert q in cfg["cost_table"], f"{mid} missing cost_table entry for {q}"
+
+
+def test_gpt_image_2_supports_custom_size():
+    assert app_module._MODELS["gpt-image-2"]["supports_custom_size"] is True
+
+
+def test_calc_cost_for_new_model_preset_size():
+    c = app_module.calc_cost("gpt-image-2.5-sunburst", "medium", "1024x1024", 1)
+    assert c == app_module.calc_cost("gpt-image-2", "medium", "1024x1024", 1)
+
+
+def test_calc_cost_custom_size_scales_with_pixels():
+    small = app_module.calc_cost("gpt-image-2.5-sunburst", "high", "1024x1024", 1)
+    large = app_module.calc_cost("gpt-image-2.5-sunburst", "high", "2048x1152", 1)
+    assert large > small
+    assert large != 0.042
+
+
+def test_run_generation_for_sunburst_model():
+    small_png = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+        "+P+/HgAF3wIM4+Rc7AAAAABJRU5ErkJggg=="
+    )
+    item = MagicMock(url=None, b64_json=small_png, revised_prompt=None)
+    fake_resp = MagicMock(data=[item])
+    with patch("app.get_client") as gc:
+        gc.return_value.images.generate.return_value = fake_resp
+        app_module._jobs["j2"] = {"status": "running", "created_at": 0}
+        app_module._run_generation("j2", "p", "", "high", "1024x1024", 1, "gpt-image-2.5-sunburst")
+    assert app_module._jobs["j2"]["status"] == "done"
+
+
+def test_validate_custom_size_valid_preset_shape():
+    ok, err, exp = app_module.validate_custom_size("1024x1024")
+    assert ok and err is None and exp is False
+
+
+def test_validate_custom_size_valid_custom_multiple_of_16():
+    ok, err, exp = app_module.validate_custom_size("1600x1200")
+    assert ok and err is None and exp is False
+
+
+def test_validate_custom_size_rejects_non_multiple_of_16():
+    ok, err, _ = app_module.validate_custom_size("1023x1023")
+    assert not ok and "16" in err
+
+
+def test_validate_custom_size_rejects_bad_aspect_ratio():
+    ok, err, _ = app_module.validate_custom_size("3008x512")  # ~5.9:1
+    assert not ok and "ratio" in err.lower()
+
+
+def test_validate_custom_size_rejects_over_max():
+    ok, err, _ = app_module.validate_custom_size("4096x2160")
+    assert not ok and "3840x2160" in err
+
+
+def test_validate_custom_size_flags_experimental_but_allows():
+    ok, err, exp = app_module.validate_custom_size("3840x2160")
+    assert ok and err is None and exp is True
+
+
+def test_validate_size_for_model_rejects_custom_for_unsupported_model():
+    cfg = app_module._MODELS["gemini-3.1-flash-lite-image"]
+    ok, err = app_module.validate_size_for_model(cfg, "1600x1200")
+    assert not ok and err
+
+
+def test_generate_rejects_invalid_custom_size(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    rv = client.post("/generate", json={
+        "prompt": "a cat", "model": "gpt-image-2.5-sunburst",
+        "quality": "high", "size": "1023x1023",
+    })
+    assert rv.status_code == 400
+    assert "16" in rv.get_json()["error"]
