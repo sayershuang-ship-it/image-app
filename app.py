@@ -159,6 +159,7 @@ def init_db():
             ("tags",            "TEXT"),
             ("result_path",     "TEXT"),
             ("thumb_path",      "TEXT"),
+            ("usage_json",      "TEXT"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE prompts ADD COLUMN {col} {definition}")
@@ -463,15 +464,15 @@ def calc_cost(model: str, quality: str, size: str, n: int = 1) -> float:
 
 def save_prompt(prompt, image_b64, revised, quality, size, model,
                 result_url, result_b64, success, error_msg="",
-                original_prompt=None, cost_usd=None) -> int:
+                original_prompt=None, cost_usd=None, usage_json=None) -> int:
     with sqlite3.connect(DB_PATH) as conn:
         cur = conn.execute("""
             INSERT INTO prompts
                 (prompt, original_prompt, image_b64, revised_prompt, quality, size, model,
-                 result_url, result_b64, success, error_msg, cost_usd)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                 result_url, result_b64, success, error_msg, cost_usd, usage_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (prompt, original_prompt, image_b64 or None, revised, quality, size, model,
-              result_url, None, int(success), error_msg, cost_usd))
+              result_url, None, int(success), error_msg, cost_usd, usage_json))
         pid = cur.lastrowid
         if result_b64:
             try:
@@ -755,6 +756,16 @@ def _resolve_vars(text: str, variables: dict) -> str:
     return re.sub(r'\{argument\s+name="([^"]+)"(?:\s+default="([^"]*)")?\s*\}', _sub, text)
 
 
+def _usage_dict(usage_obj, **extra):
+    """Provider-reported token usage as a plain dict, or None if absent/unusable."""
+    if usage_obj is None or not hasattr(usage_obj, "model_dump"):
+        return None
+    dumped = usage_obj.model_dump()
+    if not isinstance(dumped, dict):
+        return None
+    return {**dumped, **extra}
+
+
 def _generate_gemini(prompt: str, image_b64: str, quality: str,
                      size: str, n: int, model: str,
                      original_prompt: str = "") -> list:
@@ -793,6 +804,8 @@ def _generate_gemini(prompt: str, image_b64: str, quality: str,
             contents=contents,
             config=config,
         )
+        usage = _usage_dict(getattr(response, "usage_metadata", None))
+        usage_json = json.dumps(usage) if usage else None
         for candidate in response.candidates:
             if not candidate.content or not candidate.content.parts:
                 continue
@@ -804,9 +817,10 @@ def _generate_gemini(prompt: str, image_b64: str, quality: str,
                     pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
                                       None, "standard", size, model,
                                       None, b64, True,
-                                      original_prompt=original_prompt or None, cost_usd=unit_cost)
+                                      original_prompt=original_prompt or None, cost_usd=unit_cost,
+                                      usage_json=usage_json)
                     results.append({"url": data_url, "revised_prompt": None,
-                                     "cost_usd": unit_cost, "pid": pid})
+                                     "cost_usd": unit_cost, "pid": pid, "usage": usage})
 
     return results
 
@@ -860,6 +874,9 @@ def _generate_openai(prompt: str, image_b64: str, quality: str,
         response = client.images.generate(**kwargs)
 
     unit_cost = calc_cost(model, quality, size, 1)
+    # Usage covers the whole call (all n images); stored as-is on every row.
+    usage = _usage_dict(getattr(response, "usage", None), n_in_call=len(response.data))
+    usage_json = json.dumps(usage) if usage else None
     results = []
     for item in response.data:
         if item.url:
@@ -873,17 +890,19 @@ def _generate_openai(prompt: str, image_b64: str, quality: str,
             pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
                               item.revised_prompt, quality, size,
                               model, item.url, raw_b64, True,
-                              original_prompt=original_prompt or None, cost_usd=unit_cost)
+                              original_prompt=original_prompt or None, cost_usd=unit_cost,
+                              usage_json=usage_json)
             results.append({"url": data_url, "revised_prompt": item.revised_prompt,
-                             "cost_usd": unit_cost, "pid": pid})
+                             "cost_usd": unit_cost, "pid": pid, "usage": usage})
         elif item.b64_json:
             data_url = f"data:image/png;base64,{item.b64_json}"
             pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
                               item.revised_prompt, quality, size,
                               model, None, item.b64_json, True,
-                              original_prompt=original_prompt or None, cost_usd=unit_cost)
+                              original_prompt=original_prompt or None, cost_usd=unit_cost,
+                              usage_json=usage_json)
             results.append({"url": data_url, "revised_prompt": item.revised_prompt,
-                             "cost_usd": unit_cost, "pid": pid})
+                             "cost_usd": unit_cost, "pid": pid, "usage": usage})
 
     return results
 
