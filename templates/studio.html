@@ -1088,7 +1088,7 @@ qualitySelect.addEventListener('change', () => {
 promptInput.addEventListener('input', updateButtons);
 
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!generateBtn.disabled) state.mode === 'batch' ? doBatchGenerate() : doGenerate(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); if (!generateBtn.disabled) state.mode === 'compare' ? doCompareGenerate() : state.mode === 'batch' ? doBatchGenerate() : doGenerate(); }
 });
 
 enhanceBtn.addEventListener('click', doEnhance);
@@ -1107,7 +1107,7 @@ async function doEnhance() {
   finally { state.enhancing = false; setLoading(enhanceBtn, false); }
 }
 
-generateBtn.addEventListener('click', () => state.mode === 'batch' ? doBatchGenerate() : doGenerate());
+generateBtn.addEventListener('click', () => state.mode === 'compare' ? doCompareGenerate() : state.mode === 'batch' ? doBatchGenerate() : doGenerate());
 batchInput.addEventListener('input', updateButtons);
 /* sleep in static/app.js */
 function showGeneratingProgress(startTime) {
@@ -1211,6 +1211,85 @@ async function doBatchGenerate() {
     renderGallery();
     const secs = Math.floor((Date.now() - startTime) / 1000);
     toast(`Batch done: ${results.length}/${prompts.length} images in ${secs}s — $${state.sessionCost.toFixed(3)} total`, 'success');
+    gallerySub.textContent = `Session: $${state.sessionCost.toFixed(3)}`;
+    gallerySub.style.display = '';
+  } catch (e) {
+    toast(e.message, 'error');
+    renderGallery();
+  } finally {
+    state.generating = false;
+    setLoading(generateBtn, false);
+  }
+}
+
+async function doCompareGenerate() {
+  const prompt = promptInput.value.trim();
+  const models = getCompareModels();
+  if (!prompt || models.length < 2 || models.length > 4) return;
+  state.generating = true;
+  setLoading(generateBtn, true);
+  updateButtons();
+  const quality = qualitySelect.value;
+  const size = getCurrentSize();
+  const startTime = Date.now();
+  const nameOf = id => MODELS?.[id]?.name || id;
+
+  galleryHeading.textContent = 'Comparing…';
+  gallerySub.style.display = 'none';
+  galleryGrid.innerHTML = `
+    <div class="compare-grid" style="grid-template-columns:repeat(${models.length}, minmax(0, 1fr))">
+      ${models.map((id, i) => `
+      <div class="compare-col" id="compare-col-${i}">
+        <div class="compare-col-head"><strong>${escHtml(nameOf(id))}</strong><span class="cc-meta"></span></div>
+        <div class="cc-body"><div class="gen-spinner" style="width:20px;height:20px;border-width:2px"></div></div>
+      </div>`).join('')}
+    </div>`;
+  const col = id => document.getElementById(`compare-col-${models.indexOf(id)}`);
+  const setBody = (id, html) => { const c = col(id); if (c) c.querySelector('.cc-body').innerHTML = html; };
+  const setMeta = (id, text) => { const c = col(id); if (c) c.querySelector('.cc-meta').textContent = text; };
+
+  try {
+    const body = { prompt, models, quality, size };
+    if (state.imageB64) body.image_b64 = state.imageB64;
+    const r = await fetch('/compare-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Compare failed to start');
+
+    (d.skipped || []).forEach(s => {
+      setMeta(s.model, 'skipped');
+      setBody(s.model, `<div style="color:var(--muted);font-size:14px">Skipped: ${escHtml(s.error)}</div>`);
+    });
+    d.jobs.forEach(j => setMeta(j.model, `${j.quality} · ~$${Number(j.estimated_cost || 0).toFixed(3)}`));
+
+    const results = [];
+    await Promise.all(d.jobs.map(async ({ job_id, model }) => {
+      try {
+        const imgs = await pollJob(job_id, startTime);
+        results.push(...imgs);
+        state.sessionCost += imgs.reduce((s, x) => s + (x.cost_usd || 0), 0);
+        const img = imgs[0];
+        if (img) {
+          // OpenAI reports total_tokens; Gemini usage_metadata reports total_token_count.
+          const total = img.usage ? (img.usage.total_tokens ?? img.usage.total_token_count) : null;
+          const tokens = total != null
+            ? `<div class="cc-usage">${escHtml(String(total))} tokens</div>` : '';
+          setBody(model, `<img src="${escAttr(img.url)}" alt="${escAttr(nameOf(model))}" />${tokens}`);
+        }
+      } catch (err) {
+        setBody(model, `<div style="color:var(--muted);font-size:14px">Failed: ${escHtml(err.message)}</div>`);
+      }
+    }));
+
+    // Keep the side-by-side view on screen; results join the session gallery
+    // and show up there on the next render.
+    state.gallery = [...results, ...state.gallery];
+    galleryHeading.textContent = 'Compare Results';
+    const secs = Math.floor((Date.now() - startTime) / 1000);
+    toast(`Compare done: ${results.length}/${d.jobs.length} images in ${secs}s — $${state.sessionCost.toFixed(3)} total`, 'success');
     gallerySub.textContent = `Session: $${state.sessionCost.toFixed(3)}`;
     gallerySub.style.display = '';
   } catch (e) {
