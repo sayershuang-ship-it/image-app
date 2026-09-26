@@ -489,6 +489,17 @@
 .batch-item .bp-status.failed { background: var(--danger); }
 .batch-item .bp-prompt { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ── Compare mode ─────────────────────────────────────── */
+.compare-area { display: none; flex-direction: column; gap: 6px; }
+.compare-area.visible { display: flex; }
+.compare-models { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; }
+.compare-models label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.compare-grid { grid-column: 1/-1; display: grid; gap: 12px; }
+.compare-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.compare-col-head { font-size: 14px; display: flex; flex-direction: column; gap: 2px; }
+.compare-col-head .cc-meta, .compare-col .cc-usage { font-size: 12px; color: var(--muted); }
+.compare-col img { width: 100%; border-radius: var(--radius); }
+
 @media (max-width: 860px) {
   .workspace { flex-direction: column; }
   .panel-left {
@@ -520,6 +531,7 @@
       <div class="mode-toggle" style="margin-bottom:4px">
         <button class="mode-btn active" id="mode-single">Single</button>
         <button class="mode-btn" id="mode-batch">Batch</button>
+        <button class="mode-btn" id="mode-compare">Compare</button>
       </div>
 
       <div class="prompt-area" id="single-area">
@@ -532,6 +544,12 @@
         <label for="batch-input">Batch Prompts</label>
         <textarea id="batch-input" placeholder="One prompt per line&#10;a sunset over mountains&#10;a futuristic city in rain&#10;a cat in samurai armor"></textarea>
         <span class="batch-hint">Each line = one image (max 20)</span>
+      </div>
+
+      <div class="compare-area" id="compare-area">
+        <label>Compare Models</label>
+        <div class="compare-models" id="compare-models"></div>
+        <span class="batch-hint">Pick 2–4 models; one image each</span>
       </div>
 
       <div class="controls">
@@ -649,6 +667,9 @@ const modeBatch      = $('#mode-batch');
 const singleArea     = $('#single-area');
 const batchArea      = $('#batch-area');
 const countGroup     = $('#count-group');
+const modeCompare    = $('#mode-compare');
+const compareArea    = $('#compare-area');
+const compareModels  = $('#compare-models');
 const apiBadge = $('#api-badge');
 const toastContainer = $('#toast-container');
 const themeToggle = $('#theme-toggle');
@@ -667,15 +688,36 @@ async function init() {
 // ── Mode toggle ─────────────────────────────────────────
 modeSingle.addEventListener('click', () => setMode('single'));
 modeBatch.addEventListener('click', () => setMode('batch'));
+modeCompare.addEventListener('click', () => setMode('compare'));
 function setMode(m) {
   state.mode = m;
   modeSingle.classList.toggle('active', m === 'single');
   modeBatch.classList.toggle('active', m === 'batch');
-  singleArea.style.display = m === 'single' ? '' : 'none';
+  modeCompare.classList.toggle('active', m === 'compare');
+  singleArea.style.display = m === 'batch' ? 'none' : '';
   batchArea.classList.toggle('visible', m === 'batch');
-  countGroup.style.display = m === 'batch' ? 'none' : '';
+  compareArea.classList.toggle('visible', m === 'compare');
+  countGroup.style.display = m === 'single' ? '' : 'none';
+  modelSelect.closest('.control-group').style.display = m === 'compare' ? 'none' : '';
   suggestionBox.style.display = 'none';
+  updateCostBadge();
   updateButtons();
+}
+
+// ── Compare mode model picker ───────────────────────────
+function renderCompareModels() {
+  const list = Object.values(MODELS || {});
+  compareModels.innerHTML = list.map((m, i) => `
+    <label><input type="checkbox" value="${escAttr(m.id)}" ${i < 2 ? 'checked' : ''} /> ${escHtml(m.name)}</label>`).join('');
+  compareModels.querySelectorAll('input').forEach(cb => cb.addEventListener('change', () => { updateCostBadge(); updateButtons(); }));
+}
+function getCompareModels() {
+  return [...compareModels.querySelectorAll('input:checked')].map(cb => cb.value);
+}
+// Mirror the backend: invalid quality coerces to the model's first quality.
+function compareQualityFor(modelId, quality) {
+  const cfg = MODELS?.[modelId];
+  return cfg && !cfg.qualities.includes(quality) ? cfg.qualities[0] : quality;
 }
 
 // ── Model config (loaded from /api/models, hardcoded fallback) ──
@@ -691,6 +733,7 @@ async function loadModels() {
     modelSelect.value = MODELS[currentModel] ? currentModel : d.models[0].id;
     currentModel = modelSelect.value;
   } catch (_) {}
+  renderCompareModels();
   updateModelOptions();
 }
 
@@ -734,8 +777,8 @@ function validateCustomSize() {
 }
 
 // ── Cost badge ──────────────────────────────────────────
-function calcCost(quality, size, n) {
-  const cfg = MODELS?.[currentModel];
+function calcCost(quality, size, n, modelId = currentModel) {
+  const cfg = MODELS?.[modelId];
   if (!cfg) return 0.042 * n;
   const qualityTable = cfg.cost_table[quality] || {};
   if (qualityTable[size] != null) return qualityTable[size] * n;
@@ -758,9 +801,15 @@ function calcCost(quality, size, n) {
 function updateCostBadge() {
   const quality = qualitySelect.value;
   const size = getCurrentSize();
-  const estimateTag = currentModel.startsWith('gpt-image-2.5') ? ' (est.)' : '';
+  const compareIds = state.mode === 'compare' ? getCompareModels() : [];
+  const estimateTag = (state.mode === 'compare'
+    ? compareIds.some(id => id.startsWith('gpt-image-2.5'))
+    : currentModel.startsWith('gpt-image-2.5')) ? ' (est.)' : '';
   costBadge.title = estimateTag ? 'gpt-image-2.5 pricing not yet published by OpenAI; reusing gpt-image-2 rates as an estimate.' : '';
-  if (state.mode === 'batch') {
+  if (state.mode === 'compare') {
+    const c = compareIds.reduce((s, id) => s + calcCost(compareQualityFor(id, quality), size, 1, id), 0);
+    costBadge.textContent = `~$${c.toFixed(3)}${estimateTag} (${compareIds.length} models)`;
+  } else if (state.mode === 'batch') {
     const lines = (batchInput.value || '').split('\n').filter(l => l.trim()).length;
     const c = calcCost(quality, size, Math.max(lines, 1));
     costBadge.textContent = `~$${c.toFixed(3)}${estimateTag} (${lines} prompts)`;
@@ -924,6 +973,10 @@ function updateButtons() {
     const hasBatch = (batchInput.value || '').split('\n').some(l => l.trim());
     enhanceBtn.disabled = true;
     generateBtn.disabled = !hasBatch || busy || sizeInvalid;
+  } else if (state.mode === 'compare') {
+    const nModels = getCompareModels().length;
+    enhanceBtn.disabled = !(hasPrompt || hasImage) || busy;
+    generateBtn.disabled = !hasPrompt || nModels < 2 || nModels > 4 || busy || sizeInvalid;
   } else {
     enhanceBtn.disabled = !(hasPrompt || hasImage) || busy;
     generateBtn.disabled = !hasPrompt || busy || sizeInvalid;
