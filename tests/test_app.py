@@ -540,7 +540,7 @@ def test_calc_cost_custom_size_scales_with_pixels():
     assert large != 0.042
 
 
-def test_run_generation_for_sunburst_model():
+def test_run_generation_for_sunburst_model(client):
     small_png = (
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
         "+P+/HgAF3wIM4+Rc7AAAAABJRU5ErkJggg=="
