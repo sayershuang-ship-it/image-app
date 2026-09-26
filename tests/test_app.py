@@ -1072,3 +1072,59 @@ def test_embed_prompt_swallows_failure(client):
     with patch("app.embed_text", side_effect=ConnectionError("refused")):
         app_module._embed_prompt(pid, "p")  # must not raise
     assert _row(pid)["embedding"] is None
+
+
+def _insert_history_row(prompt, embedding, success=1):
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        cur = conn.execute(
+            "INSERT INTO prompts (prompt, success, embedding) VALUES (?,?,?)",
+            (prompt, success,
+             json.dumps(embedding).encode() if embedding is not None else None))
+        return cur.lastrowid
+
+
+def test_history_search_ranks_by_similarity(client):
+    close = _insert_history_row("close", [1.0, 0.0])
+    _insert_history_row("far", [0.0, 1.0])
+    with patch("app.embed_text", return_value=[0.9, 0.1]):
+        rv = client.get("/api/history/search?q=rainy+neon+city")
+    assert rv.status_code == 200
+    data = rv.get_json()
+    assert [d["prompt"] for d in data] == ["close", "far"]
+    assert data[0]["id"] == close
+    assert data[0]["similarity"] > data[1]["similarity"]
+    assert "embedding" not in data[0]
+    history_keys = set(client.get("/history").get_json()[0].keys())
+    assert set(data[0].keys()) == history_keys | {"similarity"}
+
+
+def test_history_search_excludes_failed_and_unembedded_rows(client):
+    _insert_history_row("ok", [1.0, 0.0])
+    _insert_history_row("failed", [1.0, 0.0], success=0)
+    _insert_history_row("no-vector", None)
+    with patch("app.embed_text", return_value=[0.9, 0.1]):
+        rv = client.get("/api/history/search?q=x")
+    assert [d["prompt"] for d in rv.get_json()] == ["ok"]
+
+
+def test_history_search_skips_malformed_embedding(client):
+    _insert_history_row("good", [1.0, 0.0])
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        conn.execute("INSERT INTO prompts (prompt, success, embedding) VALUES ('bad', 1, ?)",
+                     (b"not json",))
+    with patch("app.embed_text", return_value=[0.9, 0.1]):
+        rv = client.get("/api/history/search?q=x")
+    assert rv.status_code == 200
+    assert [d["prompt"] for d in rv.get_json()] == ["good"]
+
+
+def test_history_search_ollama_down_503(client):
+    with patch("app.embed_text", side_effect=ConnectionError("refused")):
+        rv = client.get("/api/history/search?q=anything")
+    assert rv.status_code == 503
+    assert "Ollama" in rv.get_json()["error"]
+
+
+def test_history_search_requires_q(client):
+    assert client.get("/api/history/search").status_code == 400
+    assert client.get("/api/history/search?q=%20").status_code == 400

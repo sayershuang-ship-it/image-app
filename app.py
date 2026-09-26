@@ -1397,6 +1397,52 @@ def templates_search_api():
     return jsonify(results)
 
 
+@app.route("/api/history/search")
+def history_search_api():
+    query = (request.args.get("q") or "").strip()
+    if not query:
+        return jsonify(error="q is required"), 400
+
+    try:
+        query_vector = embed_text(query)
+    except Exception:
+        return jsonify(error="本地 Ollama 未啟動或缺少 bge-m3 模型，"
+                             "請執行 ollama pull bge-m3 並確認 ollama serve 正在執行"), 503
+
+    # Same columns as GET /history so the page renders results unchanged.
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT id, prompt, original_prompt, revised_prompt, quality, size, model,
+                   prompt_ts, result_url, success, error_msg, cost_usd,
+                   COALESCE(starred, 0) as starred, tags,
+                   CASE WHEN image_b64 IS NOT NULL THEN 1 ELSE 0 END as has_image,
+                   CASE WHEN result_path IS NOT NULL OR result_b64 IS NOT NULL
+                        THEN 1 ELSE 0 END as has_result,
+                   embedding
+            FROM prompts
+            WHERE success=1 AND embedding IS NOT NULL
+        """).fetchall()
+
+    scored = []
+    for r in rows:
+        try:
+            vector = json.loads(r["embedding"])
+        except (json.JSONDecodeError, TypeError):
+            print(f"Skipping prompt id={r['id']}: malformed embedding JSON")
+            continue
+        scored.append((cosine_similarity(query_vector, vector), r))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+
+    results = []
+    for similarity, r in scored[:30]:
+        item = dict(r)
+        del item["embedding"]
+        item["similarity"] = similarity
+        results.append(item)
+    return jsonify(results)
+
+
 # ── Facebook Routes ──────────────────────────────────────────────────────────
 def _load_page_token(page_id=""):
     """Load page token. If page_id provided, returns that page's token.
