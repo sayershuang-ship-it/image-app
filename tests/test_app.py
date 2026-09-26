@@ -907,3 +907,37 @@ def test_save_prompt_falls_back_to_b64_when_file_write_fails(client):
     row = _row(pid)
     assert row["result_b64"] == b64 and row["result_path"] is None
     assert client.get(f"/download/{pid}").data == base64.b64decode(b64)
+
+
+def _run_openai_with_usage(job_id, usage):
+    item = MagicMock(url=None, b64_json=_png_b64(4, 4), revised_prompt=None)
+    fake_resp = MagicMock(data=[item], usage=usage)
+    with patch("app.get_client") as gc:
+        gc.return_value.images.generate.return_value = fake_resp
+        app_module._jobs[job_id] = {"status": "running", "created_at": 0}
+        app_module._run_generation(job_id, "p", "", "low", "1024x1024", 1, "gpt-image-2")
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        return conn.execute("SELECT usage_json FROM prompts ORDER BY id").fetchall()
+
+
+def test_openai_usage_recorded(client):
+    usage = MagicMock()
+    usage.model_dump.return_value = {"input_tokens": 10, "output_tokens": 100,
+                                     "total_tokens": 110}
+    rows = _run_openai_with_usage("ju1", usage)
+    assert len(rows) == 1
+    stored = json.loads(rows[0][0])
+    assert stored["total_tokens"] == 110
+    assert stored["n_in_call"] == 1
+    job = app_module._jobs["ju1"]
+    assert job["status"] == "done"
+    assert job["results"][0]["usage"]["total_tokens"] == 110
+
+
+def test_openai_usage_absent_is_null(client):
+    rows = _run_openai_with_usage("ju2", None)
+    assert len(rows) == 1
+    assert rows[0][0] is None
+    job = app_module._jobs["ju2"]
+    assert job["status"] == "done"
+    assert job["results"][0]["usage"] is None
