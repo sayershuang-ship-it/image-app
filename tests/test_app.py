@@ -48,7 +48,8 @@ def test_search_prompts_special_chars(client):
     assert rv.status_code == 200
 
 
-def test_generate_requires_prompt(client):
+def test_generate_requires_prompt(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     rv = client.post("/generate", json={}, environ_base={"OPENAI_API_KEY": "sk-test"})
     assert rv.status_code == 400
     data = rv.get_json()
@@ -274,6 +275,7 @@ def test_generate_rejects_unknown_model(client, monkeypatch):
 def test_generate_coerces_invalid_quality(client, monkeypatch):
     """/generate coerces invalid quality to model's first quality."""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("GOOGLE_API_KEY", "g-test")
     with patch("app.threading.Thread") as mock_thread:
         rv = client.post("/generate", json={
             "prompt": "x", "model": "gemini-3.1-flash-lite-image",
@@ -766,3 +768,36 @@ def test_export_zip_uses_real_extension(client):
     assert "img_0002.jpg" in names
     manifest = json.loads(zf.read("manifest.json"))
     assert [m["filename"] for m in manifest] == ["img_0001.png", "img_0002.jpg"]
+
+
+# ── Shared generation request parser ─────────────────────────────────────────
+def test_generate_non_integer_n_returns_400(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    rv = client.post("/generate", json={"prompt": "x", "n": "abc"})
+    assert rv.status_code == 400
+    assert "n must be an integer" in rv.get_json()["error"]
+
+
+def test_v1_negative_prompt_resolves_variables(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    with patch("app.threading.Thread") as mock_thread:
+        rv = client.post("/api/v1/generate", json={
+            "prompt": "a cat",
+            "negative_prompt": 'no {argument name="x" default="d"}',
+            "variables": {"x": "blur"},
+        })
+    assert rv.status_code == 202
+    assert mock_thread.call_args.kwargs["args"][1].endswith("no blur")
+
+
+def test_v1_image_too_large_413(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    rv = client.post("/api/v1/generate", json={
+        "prompt": "x", "image_b64": "a" * (15 * 1024 * 1024 + 1)})
+    assert rv.status_code == 413
+
+
+def test_generate_empty_body_returns_400(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    rv = client.post("/generate", data="x", content_type="text/plain")
+    assert rv.status_code == 400
