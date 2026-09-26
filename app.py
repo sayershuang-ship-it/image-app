@@ -830,41 +830,59 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
         _finalize_job_failure(job_id, prompt, image_b64, quality, size, model, exc)
 
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    data             = request.get_json()
-    original_prompt  = (data.get("prompt") or "").strip()
-    prompt           = original_prompt
-    image_b64        = data.get("image_b64") or ""
-    model            = data.get("model", "gpt-image-2")
-    quality          = data.get("quality", "medium")
-    size             = data.get("size", "1024x1024")
-    n                = max(min(int(data.get("n", 1)), 4), 1)
-    negative         = (data.get("negative_prompt") or "").strip()
-    variables        = data.get("variables") or {}
+class _BadRequest(Exception):
+    def __init__(self, message, status=400):
+        super().__init__(message); self.message = message; self.status = status
 
+def _parse_model_settings(data: dict) -> tuple:
+    """Validate model/quality/size (+ provider key). Returns (model, quality, size)."""
+    model = data.get("model", "gpt-image-2")
     if model not in _MODELS:
-        return jsonify(error=f"Unknown model: {model}"), 400
+        raise _BadRequest(f"Unknown model: {model}")
     missing = _missing_key_for_model(model)
     if missing:
-        return jsonify(error=f"{missing} not set"), 500
-    model_config = _MODELS[model]
-    if quality not in model_config["qualities"]:
-        quality = model_config["qualities"][0]
-    size_ok, size_err = validate_size_for_model(model_config, size)
-    if not size_ok:
-        return jsonify(error=size_err), 400
+        raise _BadRequest(f"{missing} not set", 500)
+    cfg = _MODELS[model]
+    quality = data.get("quality", "medium")
+    if quality not in cfg["qualities"]:
+        quality = cfg["qualities"][0]
+    size = data.get("size", "1024x1024")
+    ok, err = validate_size_for_model(cfg, size)
+    if not ok:
+        raise _BadRequest(err)
+    return model, quality, size
 
-    if not prompt:
-        return jsonify(error="Prompt is required"), 400
+def _parse_generation_request(data: dict, prompt_error="Prompt is required") -> dict:
+    model, quality, size = _parse_model_settings(data)
+    original_prompt = (data.get("prompt") or "").strip()
+    if not original_prompt:
+        raise _BadRequest(prompt_error)
+    try:
+        n = int(data.get("n", 1))
+    except (TypeError, ValueError):
+        raise _BadRequest("n must be an integer")
+    n = max(min(n, _MODELS[model]["max_n"]), 1)
+    image_b64 = data.get("image_b64") or ""
     if image_b64 and len(image_b64) > 15 * 1024 * 1024:
-        return jsonify(error="Image too large (max ~10MB raw)"), 413
-
-    prompt = _resolve_vars(prompt, variables)
+        raise _BadRequest("Image too large (max ~10MB raw)", 413)
+    variables = data.get("variables") or {}
+    prompt = _resolve_vars(original_prompt, variables)
+    negative = (data.get("negative_prompt") or "").strip()
     if negative:
         prompt = f"{prompt}\n\nNegative Prompt:\n{_resolve_vars(negative, variables)}"
+    return dict(original_prompt=original_prompt, prompt=prompt, image_b64=image_b64,
+                model=model, quality=quality, size=size, n=n)
 
-    estimated_cost = calc_cost(model, quality, size, n)
+@app.errorhandler(_BadRequest)
+def _handle_bad_request(e):
+    return jsonify(error=e.message), e.status
+
+
+@app.route("/generate", methods=["POST"])
+def generate():
+    req = _parse_generation_request(request.get_json(silent=True) or {})
+
+    estimated_cost = calc_cost(req["model"], req["quality"], req["size"], req["n"])
     _cleanup_old_jobs()
 
     job_id = uuid.uuid4().hex[:12]
@@ -874,7 +892,8 @@ def generate():
 
     thread = threading.Thread(
         target=_run_generation,
-        args=(job_id, prompt, image_b64, quality, size, n, model, original_prompt),
+        args=(job_id, req["prompt"], req["image_b64"], req["quality"], req["size"],
+              req["n"], req["model"], req["original_prompt"]),
         daemon=True,
     )
     thread.start()
@@ -980,21 +999,7 @@ def search_prompts():
 def batch_generate():
     data     = request.get_json() or {}
     prompts  = data.get("prompts") or []       # list of strings
-    model    = data.get("model", "gpt-image-2")
-    quality  = data.get("quality", "medium")
-    size     = data.get("size", "1024x1024")
-
-    if model not in _MODELS:
-        return jsonify(error=f"Unknown model: {model}"), 400
-    missing = _missing_key_for_model(model)
-    if missing:
-        return jsonify(error=f"{missing} not set"), 500
-    model_config = _MODELS[model]
-    if quality not in model_config["qualities"]:
-        quality = model_config["qualities"][0]
-    size_ok, size_err = validate_size_for_model(model_config, size)
-    if not size_ok:
-        return jsonify(error=size_err), 400
+    model, quality, size = _parse_model_settings(data)
 
     if not prompts or not isinstance(prompts, list):
         return jsonify(error="prompts must be a non-empty list"), 400
@@ -1062,41 +1067,18 @@ def export_zip():
 @app.route("/api/v1/generate", methods=["POST"])
 def api_v1_generate():
     """External REST API — same as /generate but returns polling URL."""
-    data          = request.get_json() or {}
-    original_prompt = (data.get("prompt") or "").strip()
-    if not original_prompt:
-        return jsonify(error="prompt is required"), 400
-    prompt    = _resolve_vars(original_prompt, data.get("variables") or {})
-    image_b64 = data.get("image_b64") or ""
-    model     = data.get("model", "gpt-image-2")
-    quality   = data.get("quality", "medium")
-    size      = data.get("size", "1024x1024")
-    n         = max(min(int(data.get("n", 1)), 4), 1)
-    negative  = (data.get("negative_prompt") or "").strip()
+    req = _parse_generation_request(request.get_json(silent=True) or {},
+                                    prompt_error="prompt is required")
 
-    if model not in _MODELS:
-        return jsonify(error=f"Unknown model: {model}"), 400
-    missing = _missing_key_for_model(model)
-    if missing:
-        return jsonify(error=f"{missing} not set"), 500
-    model_config = _MODELS[model]
-    if quality not in model_config["qualities"]:
-        quality = model_config["qualities"][0]
-    size_ok, size_err = validate_size_for_model(model_config, size)
-    if not size_ok:
-        return jsonify(error=size_err), 400
-
-    if negative:
-        prompt = f"{prompt}\n\nNegative Prompt:\n{negative}"
-
-    cost = calc_cost(model, quality, size, n)
+    cost = calc_cost(req["model"], req["quality"], req["size"], req["n"])
     _cleanup_old_jobs()
     job_id = uuid.uuid4().hex[:12]
     with _jobs_lock:
         _jobs[job_id] = {"status": "running", "created_at": time.time()}
 
     threading.Thread(target=_run_generation,
-                     args=(job_id, prompt, image_b64, quality, size, n, model, original_prompt),
+                     args=(job_id, req["prompt"], req["image_b64"], req["quality"], req["size"],
+                           req["n"], req["model"], req["original_prompt"]),
                      daemon=True).start()
 
     base = request.host_url.rstrip("/")
