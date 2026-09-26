@@ -801,3 +801,109 @@ def test_generate_empty_body_returns_400(client, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     rv = client.post("/generate", data="x", content_type="text/plain")
     assert rv.status_code == 400
+
+
+# ── Images stored as files (plan 021) ────────────────────────────────────────
+def _png_b64(w=64, h=48):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), (200, 30, 30)).save(buf, "PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def _images_root():
+    return os.path.join(os.path.dirname(app_module.DB_PATH), "images")
+
+
+def _row(pid):
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        return conn.execute("SELECT * FROM prompts WHERE id=?", (pid,)).fetchone()
+
+
+def test_save_prompt_writes_files(client):
+    b64 = _png_b64()
+    pid = _save_result(b64)
+    row = _row(pid)
+    assert row["result_b64"] is None
+    assert row["result_path"] == f"{pid}.png"
+    assert row["thumb_path"] == f"thumbs/{pid}.jpg"
+    full = os.path.join(_images_root(), row["result_path"])
+    thumb = os.path.join(_images_root(), row["thumb_path"])
+    assert os.path.exists(full) and os.path.exists(thumb)
+    with open(full, "rb") as f:
+        assert f.read() == base64.b64decode(b64)
+
+
+def test_thumb_served_from_file(client):
+    pid = _save_result(_png_b64(600, 400))
+    rv = client.get(f"/api/thumb/{pid}")
+    assert rv.status_code == 200
+    assert rv.headers["Content-Type"] == "image/jpeg"
+    with open(os.path.join(_images_root(), _row(pid)["thumb_path"]), "rb") as f:
+        assert rv.data == f.read()
+
+
+def test_legacy_b64_row_still_readable(client):
+    b64 = _png_b64(600, 400)
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        pid = conn.execute(
+            "INSERT INTO prompts (prompt, result_b64, success) VALUES (?, ?, 1)",
+            ("legacy", b64)).lastrowid
+    rv = client.get(f"/download/{pid}")
+    assert rv.status_code == 200
+    assert rv.data == base64.b64decode(b64)
+    rv = client.get(f"/api/thumb/{pid}")
+    assert rv.status_code == 200
+    assert rv.headers["Content-Type"] == "image/jpeg"
+    hist = {h["id"]: h for h in client.get("/history").get_json()}
+    assert hist[pid]["has_result"] == 1
+
+
+def test_delete_removes_files(client):
+    pid1 = _save_result(_png_b64())
+    pid2 = _save_result(_png_b64())
+    pid3 = _save_result(_png_b64())
+    files = [os.path.join(_images_root(), _row(p)[c])
+             for p in (pid1, pid2, pid3) for c in ("result_path", "thumb_path")]
+    assert all(os.path.exists(f) for f in files)
+    assert client.delete(f"/history/{pid1}").status_code == 200
+    assert not any(os.path.exists(f) for f in files[:2])
+    assert all(os.path.exists(f) for f in files[2:])
+    os.remove(files[2])  # a missing file must not break bulk delete
+    rv = client.delete("/history")
+    assert rv.status_code == 200 and rv.get_json()["deleted"] == 2
+    assert not any(os.path.exists(f) for f in files)
+
+
+def test_history_item_excludes_result_b64(client):
+    pid = _save_result(_png_b64())
+    d = client.get(f"/history/{pid}").get_json()
+    assert "result_b64" not in d
+    assert d["result_path"] == f"{pid}.png"
+    assert d["prompt"] == "p"
+
+
+def test_failure_row_stores_thumbnail_reference(client):
+    import io
+    from PIL import Image
+    job_id = "job-fail"
+    app_module._jobs[job_id] = {"status": "running"}
+    app_module._finalize_job_failure(job_id, "p", _png_b64(2000, 2000), "medium",
+                                     "1024x1024", "gpt-image-2", RuntimeError("boom"))
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        stored = conn.execute(
+            "SELECT image_b64 FROM prompts WHERE success=0").fetchone()[0]
+    img = Image.open(io.BytesIO(base64.b64decode(stored)))
+    assert max(img.size) <= 512
+    assert app_module._jobs[job_id]["status"] == "failed"
+
+
+def test_save_prompt_falls_back_to_b64_when_file_write_fails(client):
+    b64 = _png_b64()
+    with patch("app._write_image_files", side_effect=OSError("disk full")):
+        pid = _save_result(b64)
+    row = _row(pid)
+    assert row["result_b64"] == b64 and row["result_path"] is None
+    assert client.get(f"/download/{pid}").data == base64.b64decode(b64)
