@@ -1138,6 +1138,49 @@ def batch_generate():
                    estimated_cost=calc_cost(model, quality, size, len(prompts)))
 
 
+# ── Compare generation (one prompt, several models) ───────────────────────────
+@app.route("/compare-generate", methods=["POST"])
+def compare_generate():
+    data   = request.get_json(silent=True) or {}
+    models = data.get("models")
+    if (not isinstance(models, list) or not 2 <= len(models) <= 4
+            or not all(isinstance(m, str) for m in models)
+            or len(set(models)) != len(models)):
+        return jsonify(error="models must be a list of 2-4 unique model ids"), 400
+
+    valid, skipped, first_status = [], [], None
+    for m in models:
+        try:
+            valid.append(_parse_generation_request({**data, "model": m, "n": 1}))
+        except _BadRequest as e:
+            skipped.append({"model": m, "error": e.message})
+            first_status = first_status or e.status
+    if not valid:
+        return jsonify(error="All models failed validation", skipped=skipped), first_status
+
+    _cleanup_old_jobs()
+    compare_id = uuid.uuid4().hex[:12]
+    jobs = []
+    for req in valid:
+        job_id = uuid.uuid4().hex[:12]
+        cost = calc_cost(req["model"], req["quality"], req["size"], 1)
+        with _jobs_lock:
+            _jobs[job_id] = {"status": "running", "created_at": time.time(),
+                             "estimated_cost": cost, "compare_id": compare_id}
+        t = threading.Thread(
+            target=_run_generation,
+            args=(job_id, req["prompt"], req["image_b64"], req["quality"], req["size"],
+                  1, req["model"], req["original_prompt"]),
+            daemon=True,
+        )
+        t.start()
+        jobs.append({"model": req["model"], "job_id": job_id,
+                     "quality": req["quality"], "estimated_cost": cost})
+
+    return jsonify(compare_id=compare_id, jobs=jobs, skipped=skipped,
+                   estimated_cost=round(sum(j["estimated_cost"] for j in jobs), 4))
+
+
 # ── ZIP export ────────────────────────────────────────────────────────────────
 @app.route("/export-zip", methods=["POST"])
 def export_zip():

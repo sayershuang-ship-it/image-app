@@ -954,3 +954,81 @@ def test_openai_usage_unserializable_does_not_fail_job(client):
     row = _row(job["results"][0]["pid"])
     assert row["result_path"]
     assert os.path.exists(os.path.join(_images_root(), row["result_path"]))
+
+
+# ── /compare-generate ─────────────────────────────────────────────────────────
+def _compare_keys(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("GOOGLE_API_KEY", "g-test")
+
+
+def test_compare_starts_one_job_per_model(client, monkeypatch):
+    _compare_keys(monkeypatch)
+    with patch("app.threading.Thread") as mock_thread:
+        rv = client.post("/compare-generate", json={
+            "prompt": "a cat", "models": ["gpt-image-2", "gemini-3.1-flash-lite-image"],
+            "quality": "low", "size": "1024x1024"})
+    assert rv.status_code == 200
+    d = rv.get_json()
+    assert [j["model"] for j in d["jobs"]] == ["gpt-image-2", "gemini-3.1-flash-lite-image"]
+    assert d["skipped"] == []
+    assert d["compare_id"]
+    assert mock_thread.call_count == 2
+    assert mock_thread.return_value.start.call_count == 2
+    assert d["estimated_cost"] == round(sum(j["estimated_cost"] for j in d["jobs"]), 4)
+    for j in d["jobs"]:
+        assert app_module._jobs[j["job_id"]]["compare_id"] == d["compare_id"]
+
+
+def test_compare_skips_unsupported_size(client, monkeypatch):
+    _compare_keys(monkeypatch)
+    with patch("app.threading.Thread") as mock_thread:
+        rv = client.post("/compare-generate", json={
+            "prompt": "a cat", "models": ["gpt-image-2", "gemini-3.1-flash-lite-image"],
+            "quality": "low", "size": "2048x2048"})
+    assert rv.status_code == 200
+    d = rv.get_json()
+    assert [j["model"] for j in d["jobs"]] == ["gpt-image-2"]
+    assert [s["model"] for s in d["skipped"]] == ["gemini-3.1-flash-lite-image"]
+    assert d["skipped"][0]["error"]
+    assert mock_thread.call_count == 1
+
+
+def test_compare_rejects_single_model(client, monkeypatch):
+    _compare_keys(monkeypatch)
+    with patch("app.threading.Thread") as mock_thread:
+        rv = client.post("/compare-generate", json={"prompt": "x", "models": ["gpt-image-2"]})
+    assert rv.status_code == 400
+    assert mock_thread.call_count == 0
+
+
+def test_compare_rejects_duplicates(client, monkeypatch):
+    _compare_keys(monkeypatch)
+    with patch("app.threading.Thread") as mock_thread:
+        rv = client.post("/compare-generate", json={
+            "prompt": "x", "models": ["gpt-image-2", "gpt-image-2"]})
+    assert rv.status_code == 400
+    assert mock_thread.call_count == 0
+
+
+def test_compare_coerces_quality_per_model(client, monkeypatch):
+    _compare_keys(monkeypatch)
+    with patch("app.threading.Thread") as mock_thread:
+        rv = client.post("/compare-generate", json={
+            "prompt": "x", "models": ["gpt-image-2", "gemini-3.1-flash-lite-image"],
+            "quality": "high", "size": "1024x1024"})
+    assert rv.status_code == 200
+    q = {j["model"]: j["quality"] for j in rv.get_json()["jobs"]}
+    assert q == {"gpt-image-2": "high", "gemini-3.1-flash-lite-image": "standard"}
+
+
+def test_compare_all_models_fail_returns_first_status(client, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "g-test")
+    with patch("app.threading.Thread") as mock_thread:
+        rv = client.post("/compare-generate", json={
+            "prompt": "x", "models": ["gpt-image-2", "gemini-3.1-flash-lite-image"],
+            "size": "2048x2048"})
+    assert rv.status_code == 500  # first error: OPENAI_API_KEY missing
+    assert len(rv.get_json()["skipped"]) == 2
+    assert mock_thread.call_count == 0
