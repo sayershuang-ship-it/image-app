@@ -157,6 +157,8 @@ def init_db():
             ("cost_usd",        "REAL"),
             ("starred",         "INTEGER DEFAULT 0"),
             ("tags",            "TEXT"),
+            ("result_path",     "TEXT"),
+            ("thumb_path",      "TEXT"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE prompts ADD COLUMN {col} {definition}")
@@ -237,6 +239,63 @@ def make_thumbnail(b64_data: str) -> str:
         return base64.b64encode(buf.getvalue()).decode()
     except Exception:
         return b64_data   # fallback: keep original
+
+def _make_thumb_jpeg(img_bytes: bytes) -> bytes:
+    """Resize image bytes to max 256 px, return JPEG (q75) bytes."""
+    img = Image.open(io.BytesIO(img_bytes))
+    if img.mode in ('RGBA', 'P'):
+        img = img.convert('RGB')
+    w, h = img.size
+    if w > 256 or h > 256:
+        ratio = min(256 / w, 256 / h)
+        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format='JPEG', quality=75)
+    return buf.getvalue()
+
+def _images_dir() -> str:
+    d = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "images")
+    os.makedirs(os.path.join(d, "thumbs"), exist_ok=True)
+    return d
+
+def _atomic_write(path: str, data: bytes) -> None:
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+def _write_image_files(pid: int, img_bytes: bytes) -> tuple:
+    """Write full image + 256px JPEG thumb. Return (result_path, thumb_path), relative to _images_dir()."""
+    d = _images_dir()
+    ext, _ = detect_image_format(img_bytes)
+    result_path = f"{pid}.{ext}"
+    thumb_path = f"thumbs/{pid}.jpg"
+    thumb_bytes = _make_thumb_jpeg(img_bytes)
+    _atomic_write(os.path.join(d, result_path), img_bytes)
+    _atomic_write(os.path.join(d, thumb_path), thumb_bytes)
+    return result_path, thumb_path
+
+def _load_result_bytes(row):
+    """Return result image bytes from the file if present, else decoded result_b64, else None."""
+    if row["result_path"]:
+        path = os.path.join(_images_dir(), row["result_path"])
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                return f.read()
+    legacy_b64 = row["result_b64"]
+    if legacy_b64:
+        return base64.b64decode(legacy_b64)
+    return None
+
+def _delete_image_files(*rel_paths) -> None:
+    d = _images_dir()
+    for rel in rel_paths:
+        if not rel:
+            continue
+        try:
+            os.remove(os.path.join(d, rel))
+        except FileNotFoundError:
+            pass
 
 def get_client():
     return OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -412,8 +471,18 @@ def save_prompt(prompt, image_b64, revised, quality, size, model,
                  result_url, result_b64, success, error_msg, cost_usd)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         """, (prompt, original_prompt, image_b64 or None, revised, quality, size, model,
-              result_url, result_b64, int(success), error_msg, cost_usd))
-        return cur.lastrowid
+              result_url, None, int(success), error_msg, cost_usd))
+        pid = cur.lastrowid
+        if result_b64:
+            try:
+                result_path, thumb_path = _write_image_files(pid, base64.b64decode(result_b64))
+                conn.execute("UPDATE prompts SET result_path=?, thumb_path=? WHERE id=?",
+                             (result_path, thumb_path, pid))
+            except Exception as exc:
+                print(f"[save_prompt] writing image files for pid={pid} failed: {exc}; "
+                      f"storing result_b64 in DB instead")
+                conn.execute("UPDATE prompts SET result_b64=? WHERE id=?", (result_b64, pid))
+        return pid
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
@@ -429,7 +498,8 @@ def history():
                    prompt_ts, result_url, success, error_msg, cost_usd,
                    COALESCE(starred, 0) as starred, tags,
                    CASE WHEN image_b64 IS NOT NULL THEN 1 ELSE 0 END as has_image,
-                   CASE WHEN result_b64 IS NOT NULL THEN 1 ELSE 0 END as has_result
+                   CASE WHEN result_path IS NOT NULL OR result_b64 IS NOT NULL
+                        THEN 1 ELSE 0 END as has_result
             FROM prompts ORDER BY id DESC LIMIT 200
         """).fetchall()
     return jsonify([dict(r) for r in rows])
@@ -438,9 +508,12 @@ def history():
 def get_history_item(pid):
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT * FROM prompts WHERE id=?", (pid,)
-        ).fetchone()
+        row = conn.execute("""
+            SELECT id, prompt, original_prompt, image_b64, revised_prompt, quality, size,
+                   model, prompt_ts, result_url, success, error_msg, cost_usd,
+                   starred, tags, result_path
+            FROM prompts WHERE id=?
+        """, (pid,)).fetchone()
     if not row:
         return jsonify(error="Not found"), 404
     return jsonify(dict(row))
@@ -448,38 +521,46 @@ def get_history_item(pid):
 @app.route("/api/thumb/<int:pid>")
 def thumbnail(pid):
     with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT result_b64 FROM prompts WHERE id=?", (pid,)
+            "SELECT thumb_path, result_path, result_b64 FROM prompts WHERE id=?", (pid,)
         ).fetchone()
-    if not row or not row[0]:
+    if not row:
+        return '', 404
+    if row["thumb_path"]:
+        thumb_file = os.path.join(_images_dir(), row["thumb_path"])
+        if os.path.exists(thumb_file):
+            resp = send_file(thumb_file, mimetype='image/jpeg')
+            resp.headers['Cache-Control'] = 'private, max-age=86400'
+            return resp
+    img_bytes = _load_result_bytes(row)
+    if not img_bytes:
         return '', 404
     try:
-        img_bytes = base64.b64decode(row[0])
-        img = Image.open(io.BytesIO(img_bytes))
-        if img.mode in ('RGBA', 'P'):
-            img = img.convert('RGB')
-        w, h = img.size
-        if w > 256 or h > 256:
-            ratio = min(256 / w, 256 / h)
-            img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format='JPEG', quality=75)
-        return buf.getvalue(), 200, {'Content-Type': 'image/jpeg',
-                                     'Cache-Control': 'private, max-age=86400'}
+        return _make_thumb_jpeg(img_bytes), 200, {'Content-Type': 'image/jpeg',
+                                                  'Cache-Control': 'private, max-age=86400'}
     except Exception:
         return '', 500
 
 @app.route("/history/<int:pid>", methods=["DELETE"])
 def delete_history(pid):
     with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT result_path, thumb_path FROM prompts WHERE id=?", (pid,)
+        ).fetchone()
         conn.execute("DELETE FROM prompts WHERE id=?", (pid,))
+    if row:
+        _delete_image_files(*row)
     return jsonify(status="ok")
 
 
 @app.route("/history", methods=["DELETE"])
 def delete_all_history():
     with sqlite3.connect(DB_PATH) as conn:
+        paths = conn.execute("SELECT result_path, thumb_path FROM prompts").fetchall()
         cur = conn.execute("DELETE FROM prompts")
+    for row in paths:
+        _delete_image_files(*row)
     return jsonify(status="ok", deleted=cur.rowcount)
 
 
@@ -738,7 +819,7 @@ def _finalize_job_success(job_id: str, results: list) -> None:
 
 def _finalize_job_failure(job_id: str, prompt: str, image_b64: str, quality: str,
                           size: str, model: str, exc: Exception) -> None:
-    save_prompt(prompt, image_b64, None, quality, size,
+    save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None, None, quality, size,
                 model, None, None, False, str(exc))
     with _jobs_lock:
         _jobs[job_id]["status"] = "failed"
@@ -789,7 +870,8 @@ def _generate_openai(prompt: str, image_b64: str, quality: str,
             except Exception:
                 raw_b64 = None
             data_url = f"data:image/png;base64,{raw_b64}" if raw_b64 else item.url
-            pid = save_prompt(prompt, image_b64, item.revised_prompt, quality, size,
+            pid = save_prompt(prompt, make_thumbnail(image_b64) if image_b64 else None,
+                              item.revised_prompt, quality, size,
                               model, item.url, raw_b64, True,
                               original_prompt=original_prompt or None, cost_usd=unit_cost)
             results.append({"url": data_url, "revised_prompt": item.revised_prompt,
@@ -1038,14 +1120,14 @@ def export_zip():
         with _zip.ZipFile(buf, "w", _zip.ZIP_DEFLATED) as zf:
             for pid in ids[:50]:
                 row = conn.execute(
-                    "SELECT id, prompt, revised_prompt, result_b64, quality, size, prompt_ts "
+                    "SELECT id, prompt, revised_prompt, result_path, result_b64, quality, size, prompt_ts "
                     "FROM prompts WHERE id=?", (pid,)
                 ).fetchone()
                 if not row:
                     continue
                 filename = None
-                if row["result_b64"]:
-                    img_data = base64.b64decode(row["result_b64"])
+                img_data = _load_result_bytes(row)
+                if img_data:
                     ext, _ = detect_image_format(img_data)
                     filename = f"img_{row['id']:04d}.{ext}"
                     zf.writestr(filename, img_data)
@@ -1328,7 +1410,7 @@ def fb_callback():
 def fb_post():
     """Post an image to a Facebook page.
     Body: {page_id, message, image_path (local) or image_url, or pid}
-    If pid is given, loads result_b64 from prompts table and uploads as multipart.
+    If pid is given, loads the result image for that prompt and uploads as multipart.
     """
     data = request.get_json() or {}
     page_id = data.get("page_id", "")
@@ -1343,12 +1425,12 @@ def fb_post():
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT result_b64, prompt FROM prompts WHERE id=?", (pid,)
+            "SELECT result_path, result_b64, prompt FROM prompts WHERE id=?", (pid,)
         ).fetchone()
         conn.close()
-        if not row or not row["result_b64"]:
+        pid_bytes = _load_result_bytes(row) if row else None
+        if not pid_bytes:
             return jsonify(error=f"No image found for pid={pid}"), 404
-        pid_bytes = base64.b64decode(row["result_b64"])
         # Default message = prompt text, truncated
         if not message and row["prompt"]:
             message = row["prompt"][:500]
@@ -1480,12 +1562,12 @@ def download(pid):
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT result_b64, result_url FROM prompts WHERE id=?", (pid,)
+            "SELECT result_path, result_b64, result_url FROM prompts WHERE id=?", (pid,)
         ).fetchone()
     if not row:
         return jsonify(error="Not found"), 404
-    if row["result_b64"]:
-        img_data = base64.b64decode(row["result_b64"])
+    img_data = _load_result_bytes(row)
+    if img_data:
         ext, mime = detect_image_format(img_data)
         return send_file(
             io.BytesIO(img_data),
@@ -1520,17 +1602,16 @@ def save_to_pictures(pid):
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT result_b64, result_url, prompt FROM prompts WHERE id=?", (pid,)
+            "SELECT result_path, result_b64, result_url, prompt FROM prompts WHERE id=?", (pid,)
         ).fetchone()
     if not row:
         return jsonify(error="Not found"), 404
-    if row["result_b64"]:
-        img_data = base64.b64decode(row["result_b64"])
-    elif row["result_url"]:
+    img_data = _load_result_bytes(row)
+    if not img_data and row["result_url"]:
         import urllib.request
         with urllib.request.urlopen(row["result_url"]) as resp:
             img_data = resp.read()
-    else:
+    if not img_data:
         return jsonify(error="No image data"), 404
     filename = _save_img_to_pictures(img_data, row["prompt"] or "")
     return jsonify(filename=filename)
