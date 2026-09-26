@@ -757,13 +757,27 @@ def _resolve_vars(text: str, variables: dict) -> str:
 
 
 def _usage_dict(usage_obj, **extra):
-    """Provider-reported token usage as a plain dict, or None if absent/unusable."""
-    if usage_obj is None or not hasattr(usage_obj, "model_dump"):
+    """Provider-reported token usage as a plain dict, or None if absent/unusable.
+    Best-effort: never raises, so usage capture can't fail a generation."""
+    try:
+        if usage_obj is None or not hasattr(usage_obj, "model_dump"):
+            return None
+        dumped = usage_obj.model_dump(mode="json")
+        if not isinstance(dumped, dict):
+            return None
+        return {**dumped, **extra}
+    except Exception:
         return None
-    dumped = usage_obj.model_dump()
-    if not isinstance(dumped, dict):
+
+
+def _usage_json(usage):
+    """JSON string for a usage dict, or None if absent/unserializable. Never raises."""
+    if not usage:
         return None
-    return {**dumped, **extra}
+    try:
+        return json.dumps(usage)
+    except Exception:
+        return None
 
 
 def _generate_gemini(prompt: str, image_b64: str, quality: str,
@@ -805,7 +819,7 @@ def _generate_gemini(prompt: str, image_b64: str, quality: str,
             config=config,
         )
         usage = _usage_dict(getattr(response, "usage_metadata", None))
-        usage_json = json.dumps(usage) if usage else None
+        usage_json = _usage_json(usage)
         for candidate in response.candidates:
             if not candidate.content or not candidate.content.parts:
                 continue
@@ -876,7 +890,7 @@ def _generate_openai(prompt: str, image_b64: str, quality: str,
     unit_cost = calc_cost(model, quality, size, 1)
     # Usage covers the whole call (all n images); stored as-is on every row.
     usage = _usage_dict(getattr(response, "usage", None), n_in_call=len(response.data))
-    usage_json = json.dumps(usage) if usage else None
+    usage_json = _usage_json(usage)
     results = []
     for item in response.data:
         if item.url:

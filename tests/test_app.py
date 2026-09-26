@@ -941,3 +941,16 @@ def test_openai_usage_absent_is_null(client):
     job = app_module._jobs["ju2"]
     assert job["status"] == "done"
     assert job["results"][0]["usage"] is None
+
+
+def test_openai_usage_unserializable_does_not_fail_job(client):
+    usage = MagicMock()
+    usage.model_dump.side_effect = RuntimeError("boom")
+    rows = _run_openai_with_usage("ju3", usage)
+    assert len(rows) == 1
+    assert rows[0][0] is None
+    job = app_module._jobs["ju3"]
+    assert job["status"] == "done"
+    row = _row(job["results"][0]["pid"])
+    assert row["result_path"]
+    assert os.path.exists(os.path.join(_images_root(), row["result_path"]))
