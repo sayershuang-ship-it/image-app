@@ -73,6 +73,7 @@
 }
 .btn-sm:hover { border-color: var(--fg); color: var(--fg); }
 .btn-sm.danger:hover { border-color: var(--danger); color: var(--danger); }
+.btn-sm.active { border-color: var(--accent); color: var(--accent); }
 
 /* ── History List ───────────────────────────────────── */
 .history-scroll {
@@ -390,6 +391,8 @@
       <input type="text" id="search-input" placeholder="Search prompts..." />
       <span class="search-icon">&#x2315;</span>
     </div>
+    <button class="btn-sm" id="semantic-toggle" type="button" aria-pressed="false"
+            title="Semantic search: type a description and press Enter (needs local Ollama)">語意</button>
     <div class="toolbar-actions">
       <button class="btn-sm" id="export-zip-btn" style="display:none">Export ZIP</button>
       <button class="btn-sm danger" id="clear-all-btn">Clear All</button>
@@ -463,6 +466,8 @@
 const state = {
   entries: [],
   search: '',
+  semantic: false,        // 語意 toggle on: Enter runs /api/history/search
+  semanticResults: false, // state.entries currently holds semantic results
   detailId: null,
   selected: new Set(),
 };
@@ -471,12 +476,8 @@ const state = {
 
 /* ── Data ─────────────────────────────────────── */
 
-async function loadHistory() {
-  try {
-    const r = await fetch('/history');
-    if (!r.ok) throw new Error('Server error');
-    const data = await r.json();
-    state.entries = data.map(item => ({
+function toEntry(item) {
+  return {
       id: item.id,
       prompt: item.prompt || '',
       originalPrompt: item.original_prompt || null,
@@ -492,16 +493,43 @@ async function loadHistory() {
       cost: item.cost_usd || null,
       starred: !!item.starred,
       tags: item.tags || '',
-    }));
+  };
+}
+
+async function loadHistory() {
+  state.semanticResults = false;
+  try {
+    const r = await fetch('/history');
+    if (!r.ok) throw new Error('Server error');
+    const data = await r.json();
+    state.entries = data.map(toEntry);
   } catch (e) {
     state.entries = [];
   }
   renderHistory();
 }
 
+async function semanticSearch(q) {
+  try {
+    const r = await fetch('/api/history/search?q=' + encodeURIComponent(q));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      toast(d.error || 'Semantic search failed', 'error');
+      return;
+    }
+    state.entries = d.map(toEntry);
+    state.semanticResults = true;
+    renderHistory();
+  } catch (e) {
+    toast('Semantic search failed: ' + e.message, 'error');
+  }
+}
+
 /* ── Render ─────────────────────────────────────── */
 
 function getFilteredEntries() {
+  // Semantic results are already ranked by the server; skip the substring filter.
+  if (state.semanticResults) return state.entries;
   if (!state.search.trim()) return state.entries;
   const q = state.search.toLowerCase();
   return state.entries.filter(e =>
@@ -712,7 +740,28 @@ $('#clear-all-btn').addEventListener('click', async () => {
 
 $('#search-input').addEventListener('input', () => {
   state.search = $('#search-input').value;
+  if (state.semantic) {
+    // Semantic mode searches on Enter; clearing the box restores full history.
+    if (!state.search.trim() && state.semanticResults) loadHistory();
+    return;
+  }
   renderHistory();
+});
+
+$('#search-input').addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter' || !state.semantic) return;
+  const q = $('#search-input').value.trim();
+  if (q) semanticSearch(q);
+});
+
+$('#semantic-toggle').addEventListener('click', () => {
+  state.semantic = !state.semantic;
+  const btn = $('#semantic-toggle');
+  btn.classList.toggle('active', state.semantic);
+  btn.setAttribute('aria-pressed', String(state.semantic));
+  $('#search-input').placeholder = state.semantic
+    ? 'Describe an image, press Enter...' : 'Search prompts...';
+  if (!state.semantic) loadHistory();
 });
 
 /* ── Init ────────────────────────────────────────── */

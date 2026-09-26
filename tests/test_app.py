@@ -1125,6 +1125,13 @@ def test_history_search_ollama_down_503(client):
     assert "Ollama" in rv.get_json()["error"]
 
 
+def test_history_page_has_semantic_toggle(client):
+    html = client.get("/history-view").get_data(as_text=True)
+    assert 'id="semantic-toggle"' in html
+    assert "語意" in html
+    assert "/api/history/search" in html
+
+
 def test_history_search_requires_q(client):
     assert client.get("/api/history/search").status_code == 400
     assert client.get("/api/history/search?q=%20").status_code == 400
