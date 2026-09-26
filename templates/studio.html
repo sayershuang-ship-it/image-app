@@ -397,6 +397,10 @@
   border: 1px solid var(--border);
   border-radius: 20px;
   white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cost-badge.accent { color: var(--accent); border-color: var(--accent); }
 
@@ -604,7 +608,7 @@
             </select>
           </div>
         </div>
-        <div class="btn-row" style="align-items:center;gap:8px">
+        <div class="btn-row" style="align-items:center;gap:8px;flex-wrap:wrap">
           <button class="btn btn-secondary" id="enhance-btn" disabled>Translate &amp; Enhance</button>
           <button class="btn btn-primary" id="generate-btn" disabled>Generate</button>
           <span class="cost-badge" id="cost-badge">~$0.042</span>
@@ -808,7 +812,7 @@ function updateCostBadge() {
   costBadge.title = estimateTag ? 'gpt-image-2.5 pricing not yet published by OpenAI; reusing gpt-image-2 rates as an estimate.' : '';
   if (state.mode === 'compare') {
     const c = compareIds.reduce((s, id) => s + calcCost(compareQualityFor(id, quality), size, 1, id), 0);
-    costBadge.textContent = `~$${c.toFixed(3)}${estimateTag} (${compareIds.length} models)`;
+    costBadge.textContent = `~$${c.toFixed(3)}${estimateTag} · ${compareIds.length} models`;
   } else if (state.mode === 'batch') {
     const lines = (batchInput.value || '').split('\n').filter(l => l.trim()).length;
     const c = calcCost(quality, size, Math.max(lines, 1));
