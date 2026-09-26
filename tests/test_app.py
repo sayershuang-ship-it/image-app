@@ -727,3 +727,42 @@ def test_batch_generate_gemini_without_openai_key(client, monkeypatch):
         rv = client.post("/batch-generate", json={
             "prompts": ["a"], "model": _GEMINI, "size": "1024x1024"})
     assert rv.status_code == 200
+
+
+# ── Real image format on download / ZIP export ───────────────────────────────
+def _img_b64(fmt):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 4)).save(buf, fmt)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def _save_result(b64):
+    return app_module.save_prompt("p", "", "", "medium", "1024x1024",
+                                  "gpt-image-2", "", b64, True)
+
+
+def test_download_jpeg_has_jpeg_mimetype(client):
+    pid = _save_result(_img_b64("JPEG"))
+    rv = client.get(f"/download/{pid}")
+    assert rv.status_code == 200
+    assert rv.headers["Content-Type"] == "image/jpeg"
+    assert ".jpg" in rv.headers["Content-Disposition"]
+    assert rv.headers["Content-Disposition"].rstrip('"').endswith(".jpg")
+
+
+def test_export_zip_uses_real_extension(client):
+    import io
+    import zipfile
+    png_id = _save_result(_img_b64("PNG"))
+    jpg_id = _save_result(_img_b64("JPEG"))
+    assert (png_id, jpg_id) == (1, 2)
+    rv = client.post("/export-zip", json={"ids": [png_id, jpg_id]})
+    assert rv.status_code == 200
+    zf = zipfile.ZipFile(io.BytesIO(rv.data))
+    names = zf.namelist()
+    assert "img_0001.png" in names
+    assert "img_0002.jpg" in names
+    manifest = json.loads(zf.read("manifest.json"))
+    assert [m["filename"] for m in manifest] == ["img_0001.png", "img_0002.jpg"]

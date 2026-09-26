@@ -208,6 +208,17 @@ def init_db():
 THUMB_MAX = 512   # max dimension for stored thumbnails
 THUMB_QUALITY = 75
 
+_FORMAT_EXT = {"PNG": ("png", "image/png"), "JPEG": ("jpg", "image/jpeg"),
+               "WEBP": ("webp", "image/webp"), "GIF": ("gif", "image/gif")}
+
+def detect_image_format(img_bytes: bytes) -> tuple:
+    """Return (extension, mimetype) by sniffing the bytes; default PNG."""
+    try:
+        fmt = Image.open(io.BytesIO(img_bytes)).format
+    except Exception:
+        fmt = None
+    return _FORMAT_EXT.get(fmt, ("png", "image/png"))
+
 def make_thumbnail(b64_data: str) -> str:
     """Resize base64 image to max THUMB_MAX px, return smaller base64 JPEG."""
     if not b64_data:
@@ -1027,11 +1038,14 @@ def export_zip():
                 ).fetchone()
                 if not row:
                     continue
+                filename = None
                 if row["result_b64"]:
                     img_data = base64.b64decode(row["result_b64"])
-                    zf.writestr(f"img_{row['id']:04d}.jpg", img_data)
+                    ext, _ = detect_image_format(img_data)
+                    filename = f"img_{row['id']:04d}.{ext}"
+                    zf.writestr(filename, img_data)
                 manifest.append({
-                    "id": row["id"], "filename": f"img_{row['id']:04d}.jpg",
+                    "id": row["id"], "filename": filename,
                     "prompt": row["prompt"], "revised_prompt": row["revised_prompt"],
                     "quality": row["quality"], "size": row["size"],
                     "generated_at": row["prompt_ts"],
@@ -1490,11 +1504,12 @@ def download(pid):
         return jsonify(error="Not found"), 404
     if row["result_b64"]:
         img_data = base64.b64decode(row["result_b64"])
+        ext, mime = detect_image_format(img_data)
         return send_file(
             io.BytesIO(img_data),
-            mimetype="image/png",
+            mimetype=mime,
             as_attachment=True,
-            download_name=f"img_{pid}.png"
+            download_name=f"img_{pid}.{ext}"
         )
     elif row["result_url"]:
         return jsonify(url=row["result_url"])
@@ -1512,7 +1527,8 @@ def _save_img_to_pictures(img_data: bytes, prompt: str) -> str:
     os.makedirs(PICTURES_DIR, exist_ok=True)
     topic = _make_topic_slug(prompt)
     ts = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    filename = f"{ts} {topic}.png" if topic else f"{ts}.png"
+    ext, _ = detect_image_format(img_data)
+    filename = f"{ts} {topic}.{ext}" if topic else f"{ts}.{ext}"
     with open(os.path.join(PICTURES_DIR, filename), "wb") as f:
         f.write(img_data)
     return filename
