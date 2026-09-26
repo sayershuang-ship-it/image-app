@@ -1032,3 +1032,43 @@ def test_compare_all_models_fail_returns_first_status(client, monkeypatch):
     assert rv.status_code == 500  # first error: OPENAI_API_KEY missing
     assert len(rv.get_json()["skipped"]) == 2
     assert mock_thread.call_count == 0
+
+
+# ── History semantic search (plan 024) ───────────────────────────────────────
+def test_prompts_table_has_embedding_column(client):
+    with sqlite3.connect(app_module.DB_PATH) as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(prompts)").fetchall()}
+    assert "embedding" in cols
+
+
+def test_save_prompt_triggers_embedding_for_success_only(client):
+    with patch("app._embed_prompt_async") as mock_embed:
+        pid = app_module.save_prompt("neg-suffixed", None, None, "high", "1024x1024",
+                                     "gpt-image-2", None, None, True,
+                                     original_prompt="user words")
+        app_module.save_prompt("p", None, None, "high", "1024x1024",
+                               "gpt-image-2", None, None, False, error_msg="boom")
+    mock_embed.assert_called_once_with(pid, "user words")
+
+
+def test_embed_prompt_async_is_noop_when_testing(client):
+    with patch("app.embed_text") as mock_embed, patch("app.threading.Thread") as mock_thread:
+        app_module._embed_prompt_async(1, "x")
+    mock_embed.assert_not_called()
+    mock_thread.assert_not_called()
+
+
+def test_embed_prompt_stores_vector(client):
+    pid = app_module.save_prompt("p", None, None, "high", "1024x1024",
+                                 "gpt-image-2", None, None, True)
+    with patch("app.embed_text", return_value=[0.25, 0.75]):
+        app_module._embed_prompt(pid, "p")
+    assert json.loads(_row(pid)["embedding"]) == [0.25, 0.75]
+
+
+def test_embed_prompt_swallows_failure(client):
+    pid = app_module.save_prompt("p", None, None, "high", "1024x1024",
+                                 "gpt-image-2", None, None, True)
+    with patch("app.embed_text", side_effect=ConnectionError("refused")):
+        app_module._embed_prompt(pid, "p")  # must not raise
+    assert _row(pid)["embedding"] is None

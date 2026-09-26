@@ -160,6 +160,7 @@ def init_db():
             ("result_path",     "TEXT"),
             ("thumb_path",      "TEXT"),
             ("usage_json",      "TEXT"),
+            ("embedding",       "BLOB"),
         ]:
             if col not in existing:
                 conn.execute(f"ALTER TABLE prompts ADD COLUMN {col} {definition}")
@@ -483,7 +484,28 @@ def save_prompt(prompt, image_b64, revised, quality, size, model,
                 print(f"[save_prompt] writing image files for pid={pid} failed: {exc}; "
                       f"storing result_b64 in DB instead")
                 conn.execute("UPDATE prompts SET result_b64=? WHERE id=?", (result_b64, pid))
-        return pid
+    # Started after the connection above has committed and closed, so the
+    # embed thread's own UPDATE never contends with this INSERT.
+    if success:
+        _embed_prompt_async(pid, original_prompt or prompt)
+    return pid
+
+
+def _embed_prompt(pid, text):
+    """Embed one history prompt and store it. Best effort: Ollama is optional."""
+    try:
+        vector = embed_text(text)
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("UPDATE prompts SET embedding=? WHERE id=?",
+                         (json.dumps(vector).encode(), pid))
+    except Exception as exc:
+        print(f"[embed] history pid={pid} not embedded: {exc}")
+
+
+def _embed_prompt_async(pid, text):
+    if app.config.get("TESTING"):
+        return
+    threading.Thread(target=_embed_prompt, args=(pid, text), daemon=True).start()
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
