@@ -238,6 +238,15 @@ def api_key_required(f):
         return f(*args, **kwargs)
     return decorated
 
+_PROVIDER_KEY_ENV = {"openai": "OPENAI_API_KEY", "google": "GOOGLE_API_KEY"}
+
+def _missing_key_for_model(model: str):
+    """Return the env-var name of the missing key for this model's provider, or None."""
+    provider = _MODELS.get(model, {}).get("provider", "openai")
+    env = _PROVIDER_KEY_ENV.get(provider, "OPENAI_API_KEY")
+    value = os.environ.get(env) or (GOOGLE_API_KEY if env == "GOOGLE_API_KEY" else "")
+    return None if value else env
+
 # ── Model definitions & pricing ──────────────────────────────────────────────────
 _MODELS = {
     "gpt-image-2": {
@@ -811,7 +820,6 @@ def _run_generation(job_id: str, prompt: str, image_b64: str,
 
 
 @app.route("/generate", methods=["POST"])
-@api_key_required
 def generate():
     data             = request.get_json()
     original_prompt  = (data.get("prompt") or "").strip()
@@ -826,6 +834,9 @@ def generate():
 
     if model not in _MODELS:
         return jsonify(error=f"Unknown model: {model}"), 400
+    missing = _missing_key_for_model(model)
+    if missing:
+        return jsonify(error=f"{missing} not set"), 500
     model_config = _MODELS[model]
     if quality not in model_config["qualities"]:
         quality = model_config["qualities"][0]
@@ -955,7 +966,6 @@ def search_prompts():
 
 # ── Batch generation ──────────────────────────────────────────────────────────
 @app.route("/batch-generate", methods=["POST"])
-@api_key_required
 def batch_generate():
     data     = request.get_json() or {}
     prompts  = data.get("prompts") or []       # list of strings
@@ -965,6 +975,9 @@ def batch_generate():
 
     if model not in _MODELS:
         return jsonify(error=f"Unknown model: {model}"), 400
+    missing = _missing_key_for_model(model)
+    if missing:
+        return jsonify(error=f"{missing} not set"), 500
     model_config = _MODELS[model]
     if quality not in model_config["qualities"]:
         quality = model_config["qualities"][0]
@@ -1033,7 +1046,6 @@ def export_zip():
 
 # ── REST API v1 ───────────────────────────────────────────────────────────────
 @app.route("/api/v1/generate", methods=["POST"])
-@api_key_required
 def api_v1_generate():
     """External REST API — same as /generate but returns polling URL."""
     data          = request.get_json() or {}
@@ -1050,6 +1062,9 @@ def api_v1_generate():
 
     if model not in _MODELS:
         return jsonify(error=f"Unknown model: {model}"), 400
+    missing = _missing_key_for_model(model)
+    if missing:
+        return jsonify(error=f"{missing} not set"), 500
     model_config = _MODELS[model]
     if quality not in model_config["qualities"]:
         quality = model_config["qualities"][0]

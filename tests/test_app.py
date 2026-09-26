@@ -676,3 +676,54 @@ def test_enhance_prompt_refusal_returns_422(client, monkeypatch):
         rv = client.post("/enhance-prompt", json={
             "prompt": "x", "model": "gpt-image-2.5-sunburst"})
     assert rv.status_code == 422
+
+
+# ── Per-provider API key check ────────────────────────────────────────────────
+_GEMINI = "gemini-3.1-flash-lite-image"
+
+
+def test_generate_gemini_without_openai_key(client, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "g-test")
+    with patch("app.threading.Thread"):
+        rv = client.post("/generate", json={
+            "prompt": "x", "model": _GEMINI, "size": "1024x1024"})
+    assert rv.status_code == 200
+    assert "job_id" in rv.get_json()
+
+
+def test_generate_openai_without_key_500(client, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    rv = client.post("/generate", json={
+        "prompt": "x", "model": "gpt-image-2", "size": "1024x1024"})
+    assert rv.status_code == 500
+    assert "OPENAI_API_KEY" in rv.get_json()["error"]
+
+
+def test_generate_gemini_without_google_key_500(client, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setattr(app_module, "GOOGLE_API_KEY", "")
+    rv = client.post("/generate", json={
+        "prompt": "x", "model": _GEMINI, "size": "1024x1024"})
+    assert rv.status_code == 500
+    assert "GOOGLE_API_KEY" in rv.get_json()["error"]
+
+
+def test_api_v1_generate_gemini_without_openai_key(client, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "g-test")
+    with patch("app.threading.Thread"):
+        rv = client.post("/api/v1/generate", json={
+            "prompt": "x", "model": _GEMINI, "size": "1024x1024"})
+    assert rv.status_code == 202
+    assert "job_id" in rv.get_json()
+
+
+def test_batch_generate_gemini_without_openai_key(client, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_API_KEY", "g-test")
+    with patch("app.threading.Thread"):
+        rv = client.post("/batch-generate", json={
+            "prompts": ["a"], "model": _GEMINI, "size": "1024x1024"})
+    assert rv.status_code == 200
