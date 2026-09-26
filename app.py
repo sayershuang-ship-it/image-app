@@ -29,6 +29,7 @@ from openai import OpenAI
 API_KEY    = os.environ.get("OPENAI_API_KEY", "")
 PORT       = 5001
 DB_PATH    = os.path.join(os.path.dirname(__file__), "prompts.db")
+ENHANCE_MODEL = os.environ.get("ENHANCE_MODEL", "gpt-4o")  # LLM used by /enhance-prompt
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
@@ -477,6 +478,28 @@ def use_history(pid):
         "image_b64": row["image_b64"]
     })
 
+# Output rules for gpt-image-2.5-* targets, distilled from OpenAI's GPT Image
+# prompting guide (gpt-image-skill/skills/gpt-image/references/openai-cookbook.md §2).
+_ENHANCE_RULES_25 = (
+    "Output format — plain text, one short labeled line each, in this order "
+    "(omit a line only if it truly does not apply):\n"
+    "Use: <intended use, e.g. poster, product photo, infographic, UI mockup>\n"
+    "Scene: <background / environment>\n"
+    "Subject: <main subject(s); for people: body framing, pose, gaze, interaction with objects>\n"
+    "Details: <materials, textures, visual medium, style>\n"
+    "Composition: <framing, viewpoint, angle, placement of elements>\n"
+    "Lighting & mood: <lighting, color palette, atmosphere>\n"
+    "Text in image: <only if the image must contain text>\n"
+    "Constraints: <exclusions and invariants, e.g. no watermark, no extra text>\n\n"
+    "Rules:\n"
+    "- Write everything in English EXCEPT literal text that must appear in the image: "
+    "keep that exactly as the user wrote it (do not translate), wrapped in double quotes, "
+    "and state its typography, color and placement.\n"
+    "- If a photo is wanted, include the word \"photorealistic\"; keep camera specs high-level.\n"
+    "- Be concrete, but do not invent requirements the user did not imply.\n"
+    "- Output ONLY the prompt — no markdown, no explanations."
+)
+
 @app.route("/enhance-prompt", methods=["POST"])
 @api_key_required
 def enhance_prompt():
@@ -485,6 +508,7 @@ def enhance_prompt():
         return jsonify(error="Invalid JSON body"), 400
     prompt     = (data.get("prompt") or "").strip()
     image_b64  = data.get("image_b64") or ""
+    is_25      = (data.get("model") or "").startswith("gpt-image-2.5")
 
     if not prompt and not image_b64:
         return jsonify(error="Prompt or image required"), 400
@@ -493,7 +517,43 @@ def enhance_prompt():
         client = get_client()
         messages = []
 
-        if image_b64 and prompt:
+        if is_25:
+            if image_b64 and prompt:
+                task = (
+                    "You are a creative image prompt writer for GPT Image 2.5.\n\n"
+                    "Use the attached reference photo only as a visual style reference "
+                    "(general appearance, clothing style, pose, expression, colors, lighting, "
+                    "composition) — describe it in terms of visual style, not biometric details, "
+                    "and do not identify anyone. Blend that aesthetic with the concept below. "
+                    "In Constraints, list what should be preserved from the reference.\n\n"
+                    f"CONCEPT:\n{prompt}\n\n"
+                )
+            elif image_b64:
+                task = (
+                    "You are a creative image prompt writer for GPT Image 2.5.\n\n"
+                    "Write a prompt that recreates the visual style of the attached image, "
+                    "describing it in artistic terms.\n\n"
+                )
+            else:
+                task = (
+                    "You are a creative image prompt writer for GPT Image 2.5.\n\n"
+                    "Enhance the following image generation prompt to be more detailed "
+                    "and visually precise while keeping the user's intent.\n\n"
+                    f"Original prompt: {prompt}\n\n"
+                )
+            text = task + _ENHANCE_RULES_25
+            if image_b64:
+                messages.append({
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": text},
+                        {"type": "image_url",
+                         "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+                    ]
+                })
+            else:
+                messages.append({"role": "user", "content": text})
+        elif image_b64 and prompt:
             messages.append({
                 "role": "user",
                 "content": [
@@ -560,15 +620,20 @@ def enhance_prompt():
                 )
             })
 
-        response = client.chat.completions.create(
-            model="gpt-4o",
+        params = dict(
+            model=ENHANCE_MODEL,
             messages=messages,
-            max_tokens=500,
-            temperature=0.7
+            max_completion_tokens=800 if is_25 else 500,
         )
+        # Newer reasoning models reject a non-default temperature
+        if ENHANCE_MODEL.startswith("gpt-4"):
+            params["temperature"] = 0.7
+        response = client.chat.completions.create(**params)
         enhanced = response.choices[0].message.content.strip()
-        # Remove quotes if model wrapped in them
-        enhanced = enhanced.strip('"\'')
+        # Remove quotes only if the model wrapped the whole output in them —
+        # a bare strip would eat the closing quote of in-image text like "SALE"
+        if len(enhanced) >= 2 and enhanced[0] == enhanced[-1] and enhanced[0] in "\"'":
+            enhanced = enhanced[1:-1].strip()
         # Detect content policy refusal
         refusal_patterns = [
             "I'm sorry", "I can't assist", "I cannot assist",
@@ -577,7 +642,7 @@ def enhance_prompt():
         ]
         if any(enhanced.lower().startswith(p.lower()) for p in refusal_patterns):
             return jsonify(error="Content policy restriction — try a different prompt"), 422
-        return jsonify(enhanced=enhanced)
+        return jsonify(enhanced=enhanced, enhance_model=ENHANCE_MODEL)
 
     except Exception as e:
         return jsonify(error=str(e)), 500

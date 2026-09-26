@@ -1044,11 +1044,12 @@ async function doEnhance() {
   try {
     const body = { prompt: promptInput.value.trim() };
     if (state.imageB64) body.image_b64 = state.imageB64;
+    body.model = modelSelect.value;
     const r = await fetch('/enhance-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Enhance failed');
     promptInput.value = d.enhanced;
-    toast('Prompt enhanced by GPT-4o', 'success');
+    toast(`Prompt enhanced by ${d.enhance_model}`, 'success');
   } catch (e) { toast(e.message, 'error'); }
   finally { state.enhancing = false; setLoading(enhanceBtn, false); }
 }

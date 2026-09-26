@@ -60,6 +60,8 @@ cd ~/projects/image-app
 OPENAI_API_KEY=sk-... venv/bin/python app.py
 # 使用 Gemini 生成時，再設定選用的 GOOGLE_API_KEY（環境變數或寫入 ~/.image-studio.env）
 GOOGLE_API_KEY=... venv/bin/python app.py
+# 選用：指定「Translate & Enhance」改寫 prompt 用的 LLM（預設 gpt-4o）
+ENHANCE_MODEL=gpt-4o venv/bin/python app.py
 # → http://localhost:5001
 ```
 

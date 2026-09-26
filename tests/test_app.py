@@ -596,3 +596,83 @@ def test_generate_rejects_invalid_custom_size(client, monkeypatch):
     })
     assert rv.status_code == 400
     assert "16" in rv.get_json()["error"]
+
+
+def _mock_enhance_client(content):
+    fake = MagicMock()
+    fake.chat.completions.create.return_value.choices = [
+        MagicMock(message=MagicMock(content=content))
+    ]
+    return fake
+
+
+def _sent_text(fake):
+    content = fake.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    return content if isinstance(content, str) else content[0]["text"]
+
+
+def test_enhance_prompt_uses_structured_rules_for_25(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    fake = _mock_enhance_client('Use: poster\nText in image: "秋季限定"')
+    with patch("app.get_client", return_value=fake):
+        rv = client.post("/enhance-prompt", json={
+            "prompt": "咖啡店海報，上面寫「秋季限定」", "model": "gpt-image-2.5-sunburst"})
+    assert rv.status_code == 200
+    kwargs = fake.chat.completions.create.call_args.kwargs
+    assert "Constraints:" in _sent_text(fake)
+    assert kwargs["max_completion_tokens"] == 800
+    # closing quote of in-image text must survive
+    assert rv.get_json()["enhanced"].endswith('"秋季限定"')
+
+
+def test_enhance_prompt_25_with_image_sends_rules_and_image(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    fake = _mock_enhance_client("Use: portrait")
+    with patch("app.get_client", return_value=fake):
+        rv = client.post("/enhance-prompt", json={
+            "prompt": "astronaut", "image_b64": "aGVsbG8=", "model": "gpt-image-2.5-flare"})
+    assert rv.status_code == 200
+    content = fake.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "Constraints:" in content[0]["text"]
+    assert content[1]["type"] == "image_url"
+
+
+def test_enhance_prompt_keeps_legacy_rules_for_other_models(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    for body in ({"prompt": "a cat", "model": "gpt-image-2"}, {"prompt": "a cat"}):
+        fake = _mock_enhance_client('"A fluffy cat"')
+        with patch("app.get_client", return_value=fake):
+            rv = client.post("/enhance-prompt", json=body)
+        assert rv.status_code == 200
+        assert "one paragraph" in _sent_text(fake)
+        assert "Constraints:" not in _sent_text(fake)
+        assert fake.chat.completions.create.call_args.kwargs["max_completion_tokens"] == 500
+        # whole-output wrapping quotes are still removed
+        assert rv.get_json()["enhanced"] == "A fluffy cat"
+
+
+def test_enhance_prompt_model_is_configurable(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    fake = _mock_enhance_client("a cat")
+    with patch("app.get_client", return_value=fake):
+        rv = client.post("/enhance-prompt", json={"prompt": "a cat"})
+    kwargs = fake.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "gpt-4o" and kwargs["temperature"] == 0.7
+    assert rv.get_json()["enhance_model"] == "gpt-4o"
+
+    monkeypatch.setattr(app_module, "ENHANCE_MODEL", "gpt-5.5")
+    fake = _mock_enhance_client("a cat")
+    with patch("app.get_client", return_value=fake):
+        rv = client.post("/enhance-prompt", json={"prompt": "a cat"})
+    kwargs = fake.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "gpt-5.5" and "temperature" not in kwargs
+    assert rv.get_json()["enhance_model"] == "gpt-5.5"
+
+
+def test_enhance_prompt_refusal_returns_422(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    fake = _mock_enhance_client("I'm sorry, I can't help with that.")
+    with patch("app.get_client", return_value=fake):
+        rv = client.post("/enhance-prompt", json={
+            "prompt": "x", "model": "gpt-image-2.5-sunburst"})
+    assert rv.status_code == 422

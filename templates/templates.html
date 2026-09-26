@@ -548,7 +548,7 @@ async function enhancePrompt() {
   try {
     const res = await fetch('/enhance-prompt', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({prompt})
+      body: JSON.stringify({prompt, model: document.getElementById('modelSelect').value})
     });
     const data = await res.json();
     if (data.enhanced) {
